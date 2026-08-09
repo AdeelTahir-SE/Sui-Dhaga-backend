@@ -1,7 +1,36 @@
 import { Router } from "express";
 import { authRoutes } from "../modules/auth/auth.routes.js";
-import { resourceRoutes } from "../modules/resources/resources.routes.js";
+import { usersRoutes } from "../modules/users/users.routes.js";
+import { tailorsRoutes } from "../modules/tailors/tailors.routes.js";
+import { appointmentsRoutes } from "../modules/appointments/appointments.routes.js";
+import { ordersRoutes } from "../modules/orders/orders.routes.js";
+import { conversationsRoutes } from "../modules/conversations/conversations.routes.js";
+import { designsRoutes } from "../modules/designs/designs.routes.js";
+import { measurementsRoutes } from "../modules/measurements/measurements.routes.js";
+import { communityRoutes } from "../modules/community/community.routes.js";
+import { fabricsRoutes } from "../modules/fabrics/fabrics.routes.js";
+import { reviewsRoutes } from "../modules/reviews/reviews.routes.js";
+import { wishlistRoutes } from "../modules/wishlist/wishlist.routes.js";
+import { paymentsRoutes } from "../modules/payments/payments.routes.js";
+import { notificationsRoutes } from "../modules/notifications/notifications.routes.js";
+import { uploadsRoutes } from "../modules/uploads/uploads.routes.js";
+import { adminRoutes } from "../modules/admin/admin.routes.js";
 
 export const apiRoutes = Router();
+
 apiRoutes.use("/auth", authRoutes);
-apiRoutes.use(resourceRoutes);
+apiRoutes.use(usersRoutes);
+apiRoutes.use(tailorsRoutes);
+apiRoutes.use(appointmentsRoutes);
+apiRoutes.use(ordersRoutes);
+apiRoutes.use(conversationsRoutes);
+apiRoutes.use(designsRoutes);
+apiRoutes.use(measurementsRoutes);
+apiRoutes.use(communityRoutes);
+apiRoutes.use(fabricsRoutes);
+apiRoutes.use(reviewsRoutes);
+apiRoutes.use(wishlistRoutes);
+apiRoutes.use(paymentsRoutes);
+apiRoutes.use(notificationsRoutes);
+apiRoutes.use(uploadsRoutes);
+apiRoutes.use(adminRoutes);
