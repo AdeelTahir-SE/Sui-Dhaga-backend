@@ -3,6 +3,7 @@ import {
   saveResource,
   deleteResource,
 } from "../../utils/resource-helper.js";
+import { aiService } from "../../services/ai.service.js";
 
 export const designsService = {
   async getDesigns(userId: string | undefined, userRole: string | undefined, page?: number, limit?: number) {
@@ -54,15 +55,44 @@ export const designsService = {
   },
 
   async textToDesign(userId: string | undefined, userRole: string | undefined, prompt: string) {
-    return this.createDesign(userId, userRole, { type: "text-to-design", prompt, status: "generated" });
+    const aiResult = await aiService.generateTextToDesign(prompt);
+    return this.createDesign(userId, userRole, {
+      type: "text-to-design",
+      prompt,
+      enhancedPrompt: aiResult.promptUsed,
+      imageUrl: aiResult.imageUrl,
+      modelUsed: aiResult.model,
+      status: "completed",
+      createdAt: new Date().toISOString(),
+    });
   },
 
-  async imageToDesign(userId: string | undefined, userRole: string | undefined, imageUrl: string) {
-    return this.createDesign(userId, userRole, { type: "image-to-design", imageUrl, status: "generated" });
+  async imageToDesign(userId: string | undefined, userRole: string | undefined, imageUrl: string, prompt?: string) {
+    const aiResult = await aiService.generateImageToDesign(imageUrl, prompt);
+    return this.createDesign(userId, userRole, {
+      type: "image-to-design",
+      originalImageUrl: imageUrl,
+      prompt,
+      enhancedPrompt: aiResult.promptUsed,
+      imageUrl: aiResult.imageUrl,
+      modelUsed: aiResult.model,
+      status: "completed",
+      createdAt: new Date().toISOString(),
+    });
   },
 
-  async sketchToDesign(userId: string | undefined, userRole: string | undefined, sketchUrl: string) {
-    return this.createDesign(userId, userRole, { type: "sketch-to-design", sketchUrl, status: "generated" });
+  async sketchToDesign(userId: string | undefined, userRole: string | undefined, sketchUrl: string, prompt?: string) {
+    const aiResult = await aiService.generateSketchToDesign(sketchUrl, prompt);
+    return this.createDesign(userId, userRole, {
+      type: "sketch-to-design",
+      sketchUrl,
+      prompt,
+      enhancedPrompt: aiResult.promptUsed,
+      imageUrl: aiResult.imageUrl,
+      modelUsed: aiResult.model,
+      status: "completed",
+      createdAt: new Date().toISOString(),
+    });
   },
 
   async duplicateDesign(designId: string, userId: string | undefined, userRole: string | undefined) {
