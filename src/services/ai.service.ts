@@ -23,7 +23,42 @@ export const aiService = {
     // 1. Try Hugging Face FLUX.1-schnell model if API key is provided
     if (env.HUGGINGFACE_API_KEY) {
       try {
-        const response = await fetch(
+        // Try HuggingFace OpenAI-compatible Router endpoint first
+        const routerRes = await fetch(
+          "https://router.huggingface.co/hf-inference/v1/images/generations",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${env.HUGGINGFACE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "black-forest-labs/FLUX.1-schnell",
+              prompt: promptUsed,
+              size: "1024x1024",
+            }),
+          }
+        );
+
+        if (routerRes.ok) {
+          const json = await routerRes.json() as { data?: Array<{ url?: string; b64_json?: string }> };
+          if (json.data?.[0]?.url) {
+            return {
+              imageUrl: json.data[0].url,
+              promptUsed,
+              model: "black-forest-labs/FLUX.1-schnell (Hugging Face Router)",
+            };
+          } else if (json.data?.[0]?.b64_json) {
+            return {
+              imageUrl: `data:image/png;base64,${json.data[0].b64_json}`,
+              promptUsed,
+              model: "black-forest-labs/FLUX.1-schnell (Hugging Face Router)",
+            };
+          }
+        }
+
+        // Direct Inference Endpoint fallback
+        const directRes = await fetch(
           "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
           {
             method: "POST",
@@ -35,14 +70,14 @@ export const aiService = {
           }
         );
 
-        if (response.ok) {
-          const buffer = await response.arrayBuffer();
+        if (directRes.ok) {
+          const buffer = await directRes.arrayBuffer();
           const base64Image = Buffer.from(buffer).toString("base64");
-          const mimeType = response.headers.get("content-type") || "image/png";
+          const mimeType = directRes.headers.get("content-type") || "image/png";
           return {
             imageUrl: `data:${mimeType};base64,${base64Image}`,
             promptUsed,
-            model: "black-forest-labs/FLUX.1-schnell (Hugging Face)",
+            model: "black-forest-labs/FLUX.1-schnell (Hugging Face Direct)",
           };
         }
       } catch (err) {
