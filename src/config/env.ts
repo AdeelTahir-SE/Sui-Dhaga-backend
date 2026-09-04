@@ -23,4 +23,11 @@ const envSchema = z.object({
   EXPO_ACCESS_TOKEN: z.string().optional()
 });
 
-export const env = envSchema.parse(process.env);
+const parsedEnv = envSchema.safeParse(process.env);
+
+if (!parsedEnv.success) {
+  console.error("❌ Invalid environment variables configuration:", parsedEnv.error.format());
+  throw new Error("Invalid environment variables. Check Vercel project settings.");
+}
+
+export const env = parsedEnv.data;

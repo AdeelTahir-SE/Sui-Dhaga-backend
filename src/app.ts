@@ -33,12 +33,26 @@ const swaggerOptions: swaggerJsdoc.Options = {
       description: "API documentation for Sui Dhaga",
     },
   },
-  // If you compile TypeScript to a dist/ folder, you might need to add './dist/routes/*.js' here too
-  apis: ["./src/routes/*.ts", "./src/routes/*.js"], 
+  apis: [
+    "./src/routes/*.ts",
+    "./src/modules/**/*.ts",
+    "./dist/routes/*.js",
+    "./dist/modules/**/*.js"
+  ],
 };
 
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customCssUrl: "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css",
+    customJs: [
+      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.js"
+    ]
+  })
+);
 
 // API Routes
 app.use("/api/v1", apiRoutes);
