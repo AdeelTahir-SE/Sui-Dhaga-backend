@@ -13,7 +13,7 @@ import { apiRoutes } from "./routes/index.js";
 export const app = express();
 
 // Middleware
-app.use(helmet());
+app.use((helmet as any)());
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "10mb" }));
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
