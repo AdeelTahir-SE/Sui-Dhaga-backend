@@ -1,4 +1,5 @@
-import rateLimit from "express-rate-limit";
+import { rateLimit } from "express-rate-limit";
+import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../utils/app-error.js";
 
 /**
@@ -14,7 +15,7 @@ export const apiLimiter = rateLimit({
     success: false,
     message: "Too many requests from this IP, please try again after 15 minutes",
   },
-  handler: (_req, _res, next) => {
+  handler: (_req: Request, _res: Response, next: NextFunction) => {
     next(new AppError("Too many requests from this IP, please try again after 15 minutes", 429));
   },
 });
@@ -32,7 +33,7 @@ export const authLimiter = rateLimit({
     success: false,
     message: "Too many authentication attempts. Please try again after 15 minutes.",
   },
-  handler: (_req, _res, next) => {
+  handler: (_req: Request, _res: Response, next: NextFunction) => {
     next(new AppError("Too many authentication attempts. Please try again after 15 minutes.", 429));
   },
 });
@@ -50,7 +51,7 @@ export const aiLimiter = rateLimit({
     success: false,
     message: "AI generation rate limit exceeded. Please wait a few minutes before creating new designs.",
   },
-  handler: (_req, _res, next) => {
+  handler: (_req: Request, _res: Response, next: NextFunction) => {
     next(
       new AppError(
         "AI generation rate limit exceeded. Please wait a few minutes before creating new designs.",
