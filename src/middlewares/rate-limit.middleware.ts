@@ -1,13 +1,17 @@
 import { rateLimit } from "express-rate-limit";
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../utils/app-error.js";
+import { env } from "../config/env.js";
 
+
+const environment=env.NODE_ENV || "development";
 /**
  * Standard rate limiter applied to all API endpoints
  * 200 requests per 15 minutes window
+ * 50 requests per 5 minutes window in development
  */
 export const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: environment === "production" ? 15 * 60 * 1000 : 5 * 60 * 1000, // 15 minutes for production and 5 minutes for development
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
@@ -23,10 +27,11 @@ export const apiLimiter = rateLimit({
 /**
  * Strict rate limiter for authentication routes (login, register, forgot-password)
  * 15 requests per 15 minutes window to protect against brute-force attacks
+ * 50 requests per 5 minutes window in development
  */
 export const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 15,
+  windowMs: environment === "production" ? 15 * 60 * 1000 : 5 * 60 * 1000, // 15 minutes for production and 5 minutes for development
+  max: environment === "production" ? 15 : 50,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -41,10 +46,11 @@ export const authLimiter = rateLimit({
 /**
  * Rate limiter for heavy AI generation routes (text-to-design, image-to-design, sketch-to-design)
  * 20 generations per 10 minutes per IP
+ * 50 generations per 5 minutes in development
  */
 export const aiLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 20,
+  windowMs: environment === "production" ? 10 * 60 * 1000 : 5 * 60 * 1000, // 10 minutes for production and 5 minutes for development
+  max: environment === "production" ? 20 : 50,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
