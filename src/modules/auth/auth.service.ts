@@ -1,15 +1,37 @@
 import { getDbClient } from "../../utils/resource-helper.js";
 import { AppError } from "../../utils/app-error.js";
 
+import type { RegisterPayload } from "./auth.types.js";
+
 export const authService = {
-  async register(email: string, password: string, role: string) {
+  async register(payload: RegisterPayload) {
+    const { email, password, role = "customer", name, phone } = payload;
+
     const client = getDbClient();
+    const metadata: Record<string, unknown> = {
+      role,
+      ...(name ? { name, full_name: name } : {}),
+      ...(phone ? { phone } : {}),
+    };
+
     const { data, error } = await client.auth.signUp({
       email,
       password,
-      options: { data: { role } },
+      options: { data: metadata },
     });
     if (error) throw new AppError(error.message, 400);
+
+    if (data.user?.id && (name || phone)) {
+      const profileUpdates: Record<string, unknown> = {};
+      if (name) profileUpdates.full_name = name;
+      if (phone) profileUpdates.phone = phone;
+
+      await client
+        .from("profiles")
+        .update(profileUpdates)
+        .eq("id", data.user.id);
+    }
+
     return { user: data.user, session: data.session };
   },
 

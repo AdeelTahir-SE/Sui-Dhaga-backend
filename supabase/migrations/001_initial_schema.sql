@@ -503,11 +503,12 @@ create trigger tr_community_comments_updated_at before update on public.communit
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  insert into public.profiles (id, role, full_name, avatar_url)
+  insert into public.profiles (id, role, full_name, phone, avatar_url)
   values (
     new.id,
     coalesce((new.raw_user_meta_data->>'role')::public.user_role, 'customer'),
     coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name'),
+    coalesce(new.raw_user_meta_data->>'phone', new.raw_user_meta_data->>'phone_number'),
     new.raw_user_meta_data->>'avatar_url'
   );
   return new;

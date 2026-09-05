@@ -30,8 +30,10 @@ export const authRoutes = Router();
  *             required: [email, password]
  *             properties:
  *               email: { type: string, format: email, example: "user@example.com" }
- *               password: { type: string, minLength: 6, example: "Password123!" }
- *               role: { type: string, enum: [customer, tailor, admin], default: customer }
+ *               password: { type: string, minLength: 8, example: "Password123!" }
+ *               role: { type: string, enum: [customer, tailor], default: customer }
+ *               name: { type: string, example: "Ayesha Khan" }
+ *               phone: { type: string, example: "+923001234567" }
  *     responses:
  *       201:
  *         description: User registered successfully

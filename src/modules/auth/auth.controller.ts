@@ -3,8 +3,7 @@ import { success } from "../../utils/api-response.js";
 import { authService } from "./auth.service.js";
 
 export const register: RequestHandler = async (req, res) => {
-  const { email, password, role } = req.body;
-  const result = await authService.register(email, password, role);
+  const result = await authService.register(req.body);
   success(res, result, "Registration successful", 201);
 };
 
