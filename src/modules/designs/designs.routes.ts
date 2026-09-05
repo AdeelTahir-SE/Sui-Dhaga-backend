@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { requireRole } from "../../middlewares/role.middleware.js";
 import { validate } from "../../middlewares/validation.middleware.js";
+import { aiLimiter } from "../../middlewares/rate-limit.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as designsController from "./designs.controller.js";
 import {
@@ -139,7 +140,7 @@ designsRoutes.delete("/designs/:designId", ...designAuth, asyncHandler(designsCo
  *       201:
  *         description: Design generated successfully
  */
-designsRoutes.post("/designs/text-to-design", ...designAuth, validate(textToDesignSchema), asyncHandler(designsController.textToDesign));
+designsRoutes.post("/designs/text-to-design", ...designAuth, aiLimiter, validate(textToDesignSchema), asyncHandler(designsController.textToDesign));
 
 /**
  * @openapi
@@ -166,7 +167,7 @@ designsRoutes.post("/designs/text-to-design", ...designAuth, validate(textToDesi
  *       201:
  *         description: Design generated successfully
  */
-designsRoutes.post("/designs/image-to-design", ...designAuth, validate(imageToDesignSchema), asyncHandler(designsController.imageToDesign));
+designsRoutes.post("/designs/image-to-design", ...designAuth, aiLimiter, validate(imageToDesignSchema), asyncHandler(designsController.imageToDesign));
 
 /**
  * @openapi
@@ -193,7 +194,7 @@ designsRoutes.post("/designs/image-to-design", ...designAuth, validate(imageToDe
  *       201:
  *         description: Design generated successfully
  */
-designsRoutes.post("/designs/sketch-to-design", ...designAuth, validate(sketchToDesignSchema), asyncHandler(designsController.sketchToDesign));
+designsRoutes.post("/designs/sketch-to-design", ...designAuth, aiLimiter, validate(sketchToDesignSchema), asyncHandler(designsController.sketchToDesign));
 
 /**
  * @openapi

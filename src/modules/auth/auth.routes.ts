@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validation.middleware.js";
+import { authLimiter } from "../../middlewares/rate-limit.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as authController from "./auth.controller.js";
 import {
@@ -35,7 +36,7 @@ export const authRoutes = Router();
  *       201:
  *         description: User registered successfully
  */
-authRoutes.post("/register", validate(registerSchema), asyncHandler(authController.register));
+authRoutes.post("/register", authLimiter, validate(registerSchema), asyncHandler(authController.register));
 
 /**
  * @swagger
@@ -58,7 +59,7 @@ authRoutes.post("/register", validate(registerSchema), asyncHandler(authControll
  *       200:
  *         description: User logged in successfully, returns JWT session
  */
-authRoutes.post("/login", validate(loginSchema), asyncHandler(authController.login));
+authRoutes.post("/login", authLimiter, validate(loginSchema), asyncHandler(authController.login));
 
 /**
  * @swagger
@@ -128,7 +129,7 @@ authRoutes.post("/refresh-token", validate(refreshTokenSchema), asyncHandler(aut
  *       200:
  *         description: Password reset email dispatched
  */
-authRoutes.post("/forgot-password", validate(forgotPasswordSchema), asyncHandler(authController.forgotPassword));
+authRoutes.post("/forgot-password", authLimiter, validate(forgotPasswordSchema), asyncHandler(authController.forgotPassword));
 
 /**
  * @swagger
@@ -150,7 +151,7 @@ authRoutes.post("/forgot-password", validate(forgotPasswordSchema), asyncHandler
  *       200:
  *         description: Password successfully updated
  */
-authRoutes.post("/reset-password", requireAuth, validate(resetPasswordSchema), asyncHandler(authController.resetPassword));
+authRoutes.post("/reset-password", requireAuth, authLimiter, validate(resetPasswordSchema), asyncHandler(authController.resetPassword));
 
 /**
  * @swagger

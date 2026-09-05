@@ -167,8 +167,10 @@ app.get("/api-docs", (_req, res) => {
 </html>`);
 });
 
-// API Routes
-app.use("/api/v1", apiRoutes);
+import { apiLimiter } from "./middlewares/rate-limit.middleware.js";
+
+// API Routes with Rate Limiting
+app.use("/api/v1", apiLimiter, apiRoutes);
 
 // Fallback Handlers
 app.use((_req, res) => res.status(404).json({ success: false, message: "Route not found" }));
