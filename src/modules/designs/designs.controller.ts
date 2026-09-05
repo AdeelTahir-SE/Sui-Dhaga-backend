@@ -102,6 +102,8 @@ export const getDesignPdf: RequestHandler = async (req, res) => {
 
 export const getExports: RequestHandler = async (req, res) => {
   const result = await designsService.getDesigns(req.user?.id, req.userRole, 1, 100);
-  const exports = result.records.filter((r: Record<string, unknown>) => r.pdfUrl);
+  const exports = result.records.filter((r) => Boolean(r.pdf_url || r.pdfUrl));
   success(res, exports, "Exports list fetched successfully");
 };
+
+

@@ -61,18 +61,67 @@ const swaggerOptions: swaggerJsdoc.Options = {
     info: {
       title: "Sui Dhaga API",
       version: "1.0.0",
-      description: "API documentation for Sui Dhaga",
+      description: "Comprehensive REST API documentation for Sui Dhaga Custom Tailoring & AI Design Platform",
+      contact: {
+        name: "Sui Dhaga Support",
+        email: "support@suidhaga.com",
+      },
     },
+    servers: [
+      {
+        url: "/api/v1",
+        description: "API Version 1",
+      },
+      {
+        url: "http://localhost:5000/api/v1",
+        description: "Local Development Server",
+      },
+    ],
+    components: {
+      securitySchemes: {
+        BearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+          description: "Enter Supabase JWT token without 'Bearer ' prefix",
+        },
+      },
+    },
+    security: [
+      {
+        BearerAuth: [],
+      },
+    ],
+    tags: [
+      { name: "Auth", description: "Authentication and session management" },
+      { name: "Users", description: "User profile management" },
+      { name: "Tailors", description: "Tailor profiles, verification, services, and availability" },
+      { name: "Appointments", description: "Tailor booking appointments" },
+      { name: "Orders", description: "Custom tailoring orders and tracking" },
+      { name: "Conversations", description: "Direct chat messaging and attachments" },
+      { name: "Designs", description: "AI design generation and studio customizations" },
+      { name: "Measurements", description: "Customer body measurement profiles" },
+      { name: "Fabrics", description: "Fabric catalog and pricing" },
+      { name: "Reviews", description: "Tailor and order reviews & ratings" },
+      { name: "Wishlist", description: "Saved designs and tailor bookmarks" },
+      { name: "Payments", description: "Checkout sessions, payments, and webhooks" },
+      { name: "Notifications", description: "User alerts and notifications" },
+      { name: "Uploads", description: "Media and document file uploads" },
+      { name: "Admin", description: "Administrative analytics, moderation, and management" },
+    ],
   },
   apis: [
     "./src/routes/*.ts",
+    "./src/modules/**/*.routes.ts",
     "./src/modules/**/*.ts",
     "./dist/routes/*.js",
-    "./dist/modules/**/*.js"
+    "./dist/modules/**/*.routes.js",
+    "./dist/modules/**/*.js",
   ],
 };
 
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
+
 
 app.get("/api-docs/swagger.json", (_req, res) => {
   res.setHeader("Content-Type", "application/json");

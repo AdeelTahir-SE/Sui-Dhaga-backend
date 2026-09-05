@@ -23,32 +23,65 @@ export const asString = (param: string | string[] | undefined): string => {
   return param ?? "";
 };
 
-export interface FetchResourceOptions {
-  resourceType: string;
+export const toSnakeCase = (obj: Record<string, unknown>): Record<string, unknown> => {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) continue;
+    const snakeKey = key.replace(/([A-Z])/g, "_$1").toLowerCase();
+    result[snakeKey] = value;
+  }
+  return result;
+};
+
+export interface FetchTableOptions {
+  table: string;
+  select?: string;
   id?: string;
   userId?: string;
+  userIdColumn?: string;
   userRole?: string;
-  isPublic?: boolean;
   page?: number;
   limit?: number;
+  orderColumn?: string;
+  ascending?: boolean;
+  filters?: Record<string, unknown>;
 }
 
-export const fetchResources = async (options: FetchResourceOptions) => {
+export const fetchTableData = async <T = Record<string, unknown>>(options: FetchTableOptions): Promise<{
+  records: T[];
+  page: number;
+  limit: number;
+  total: number;
+  singleRecord: T | null;
+}> => {
   const client = getDbClient();
   const page = Math.max(1, options.page || 1);
   const limit = Math.min(100, Math.max(1, options.limit || 20));
+  const selectQuery = options.select || "*";
 
-  let query = client
-    .from("resources")
-    .select("*", { count: "exact" })
-    .eq("resource_type", options.resourceType);
+  let query = (client
+    .from(options.table)
+    .select(selectQuery, { count: "exact" }) as any);
 
   if (options.id) {
     query = query.eq("id", options.id);
   }
 
-  if (!options.isPublic && options.userRole !== "admin" && options.userId) {
-    query = query.eq("owner_id", options.userId);
+  if (options.userId && options.userRole !== "admin") {
+    const userCol = options.userIdColumn || "user_id";
+    query = query.eq(userCol, options.userId);
+  }
+
+  if (options.filters) {
+    for (const [key, val] of Object.entries(options.filters)) {
+      if (val !== undefined && val !== null) {
+        query = query.eq(key, val);
+      }
+    }
+  }
+
+  if (options.orderColumn) {
+    query = query.order(options.orderColumn, { ascending: options.ascending ?? false });
   }
 
   const { data, error, count } = await query.range(
@@ -60,88 +93,85 @@ export const fetchResources = async (options: FetchResourceOptions) => {
     throw new AppError(error.message, 400);
   }
 
-  const records = (data ?? []).map((row: { id: string; data: Record<string, unknown> }) => ({
-    id: row.id,
-    ...row.data,
-  }));
+  const records = (data ?? []) as T[];
 
   return {
     records,
     page,
     limit,
     total: count ?? 0,
-    singleRecord: options.id ? records[0] ?? null : null,
+    singleRecord: options.id ? (records[0] ?? null) : null,
   };
 };
 
-export interface SaveResourceOptions {
-  resourceType: string;
+
+export interface SaveTableOptions {
+  table: string;
   id?: string;
   userId?: string;
+  userIdColumn?: string;
   userRole?: string;
   data: Record<string, unknown>;
 }
 
-export const saveResource = async (options: SaveResourceOptions) => {
+export const saveTableData = async (options: SaveTableOptions) => {
   const client = getDbClient();
-  const payload = {
-    ...options.data,
-    ...(options.userId ? { user_id: options.userId } : {}),
-  };
+  const userCol = options.userIdColumn || "user_id";
+  const mappedData = toSnakeCase(options.data);
 
   if (options.id) {
     let updateQuery = client
-      .from("resources")
-      .update({ data: payload })
-      .eq("id", options.id)
-      .eq("resource_type", options.resourceType);
+      .from(options.table)
+      .update(mappedData)
+      .eq("id", options.id);
 
-    if (options.userRole !== "admin" && options.userId) {
-      updateQuery = updateQuery.eq("owner_id", options.userId);
+    if (options.userId && options.userRole !== "admin") {
+      updateQuery = updateQuery.eq(userCol, options.userId);
     }
 
     const { data, error } = await updateQuery.select().single();
     if (error) throw new AppError(error.message, 400);
-    return data ? { id: data.id, ...data.data } : null;
+    return data;
   } else {
+    const insertPayload = {
+      ...mappedData,
+      ...(options.userId ? { [userCol]: options.userId } : {}),
+    };
+
     const { data, error } = await client
-      .from("resources")
-      .insert({
-        resource_type: options.resourceType,
-        owner_id: options.userId ?? null,
-        data: payload,
-      })
+      .from(options.table)
+      .insert(insertPayload)
       .select()
       .single();
+
     if (error) throw new AppError(error.message, 400);
-    return data ? { id: data.id, ...data.data } : null;
+    return data;
   }
 };
 
-export interface DeleteResourceOptions {
-  resourceType: string;
-  id?: string;
+export interface DeleteTableOptions {
+  table: string;
+  id: string;
   userId?: string;
+  userIdColumn?: string;
   userRole?: string;
 }
 
-export const deleteResource = async (options: DeleteResourceOptions) => {
+export const deleteTableData = async (options: DeleteTableOptions) => {
   const client = getDbClient();
   if (!options.id) {
-    throw new AppError("Resource ID is required for deletion", 400);
+    throw new AppError("ID is required for deletion", 400);
   }
 
-  let query = client
-    .from("resources")
-    .delete()
-    .eq("id", options.id)
-    .eq("resource_type", options.resourceType);
+  const userCol = options.userIdColumn || "user_id";
+  let query = client.from(options.table).delete().eq("id", options.id);
 
-  if (options.userRole !== "admin" && options.userId) {
-    query = query.eq("owner_id", options.userId);
+  if (options.userId && options.userRole !== "admin") {
+    query = query.eq(userCol, options.userId);
   }
 
   const { error } = await query;
   if (error) throw new AppError(error.message, 400);
   return true;
 };
+

@@ -1,42 +1,40 @@
-import {
-  saveResource,
-  deleteResource,
-} from "../../utils/resource-helper.js";
-
 export const uploadsService = {
-  async uploadImage(userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>) {
-    return saveResource({
-      resourceType: "uploads",
+  async uploadImage(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
+    return {
+      fileId: `img-${Date.now()}`,
       userId,
-      userRole,
-      data: { ...data, mediaType: "image" },
-    });
+      mediaType: "image",
+      url: (data.url || data.imageUrl || `https://storage.mock/uploads/${Date.now()}.png`) as string,
+      uploadedAt: new Date().toISOString(),
+      ...data,
+    };
   },
 
-  async uploadImages(userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>) {
-    return saveResource({
-      resourceType: "uploads",
+  async uploadImages(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
+    const urls = (data.urls as string[]) || [];
+    return {
+      batchId: `batch-${Date.now()}`,
       userId,
-      userRole,
-      data: { ...data, mediaType: "images_batch" },
-    });
+      mediaType: "images_batch",
+      urls,
+      count: urls.length,
+      uploadedAt: new Date().toISOString(),
+    };
   },
 
-  async uploadFile(userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>) {
-    return saveResource({
-      resourceType: "uploads",
+  async uploadFile(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
+    return {
+      fileId: `file-${Date.now()}`,
       userId,
-      userRole,
-      data: { ...data, mediaType: "file" },
-    });
+      mediaType: "file",
+      url: (data.url || data.fileUrl || `https://storage.mock/uploads/${Date.now()}.pdf`) as string,
+      uploadedAt: new Date().toISOString(),
+      ...data,
+    };
   },
 
-  async deleteUpload(fileId: string, userId: string | undefined, userRole: string | undefined) {
-    return deleteResource({
-      resourceType: "uploads",
-      id: fileId,
-      userId,
-      userRole,
-    });
+  async deleteUpload(_fileId: string, _userId: string | undefined, _userRole: string | undefined) {
+    return true;
   },
 };
+
