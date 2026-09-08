@@ -8,6 +8,7 @@ import * as tailorsController from "./tailors.controller.js";
 import {
   createTailorSchema,
   updateTailorSchema,
+  uploadTailorBannerSchema,
   addGalleryImageSchema,
   tailorServiceSchema,
   tailorAvailabilitySchema,
@@ -436,4 +437,65 @@ tailorsRoutes.delete("/tailors/:tailorId/gallery/:imageId", requireAuth, require
  *         description: Verification requested
  */
 tailorsRoutes.post("/tailors/:tailorId/verify", requireAuth, requireRole("tailor", "admin"), uploadDocument("document"), asyncHandler(tailorsController.requestVerification));
+
+/**
+ * @swagger
+ * /tailors/{tailorId}/banner:
+ *   post:
+ *     summary: Upload or update shop banner for tailor profile
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               banner:
+ *                 type: string
+ *                 format: binary
+ *                 description: Shop banner image file (JPEG, PNG, WebP)
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               bannerUrl: { type: string, format: uri }
+ *     responses:
+ *       200:
+ *         description: Shop banner updated successfully
+ *   patch:
+ *     summary: Upload or update shop banner for tailor profile
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               banner:
+ *                 type: string
+ *                 format: binary
+ *                 description: Shop banner image file (JPEG, PNG, WebP)
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               bannerUrl: { type: string, format: uri }
+ *     responses:
+ *       200:
+ *         description: Shop banner updated successfully
+ */
+tailorsRoutes.post("/tailors/:tailorId/banner", requireAuth, requireRole("tailor", "admin"), uploadSingleImage("banner"), validate(uploadTailorBannerSchema), asyncHandler(tailorsController.uploadTailorBanner));
+tailorsRoutes.patch("/tailors/:tailorId/banner", requireAuth, requireRole("tailor", "admin"), uploadSingleImage("banner"), validate(uploadTailorBannerSchema), asyncHandler(tailorsController.uploadTailorBanner));
 

@@ -5,6 +5,7 @@ export interface CreateTailorPayload {
   address?: string;
   experienceYears?: number;
   bio?: string;
+  bannerUrl?: string;
 }
 
 export interface UpdateTailorPayload {
@@ -14,8 +15,14 @@ export interface UpdateTailorPayload {
   address?: string;
   experienceYears?: number;
   bio?: string;
+  bannerUrl?: string;
   removeImageId?: string;
   verified?: boolean;
+}
+
+export interface UploadTailorBannerPayload {
+  bannerUrl?: string;
+  banner?: string;
 }
 
 export interface TailorServicePayload {

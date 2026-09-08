@@ -7,11 +7,17 @@ export const createTailorSchema = z.object({
   address: z.string().optional(),
   experienceYears: z.number().int().optional(),
   bio: z.string().optional(),
+  bannerUrl: z.string().url().optional(),
 });
 
 export const updateTailorSchema = createTailorSchema.partial().extend({
   removeImageId: z.string().optional(),
   verified: z.boolean().optional(),
+});
+
+export const uploadTailorBannerSchema = z.object({
+  bannerUrl: z.string().url().optional(),
+  banner: z.string().optional(),
 });
 
 export const addGalleryImageSchema = z.object({

@@ -76,6 +76,7 @@ create table if not exists public.tailors (
   bio text,
   rating numeric(3,2) not null default 0.00,
   review_count integer not null default 0,
+  banner_url text,
   verification_status public.tailor_verification_status not null default 'pending',
   verified boolean not null default false,
   latitude double precision,

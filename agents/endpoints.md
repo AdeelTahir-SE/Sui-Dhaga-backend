@@ -50,6 +50,8 @@ Base URL:
 | DELETE | /tailors/[tailorId]                   |
 | POST   | /tailors/[tailorId]/gallery           |
 | DELETE | /tailors/[tailorId]/gallery/[imageId] |
+| POST   | /tailors/[tailorId]/banner            |
+| PATCH  | /tailors/[tailorId]/banner            |
 | POST   | /tailors/[tailorId]/verify            |
 | POST   | /tailors/compare                      |
 

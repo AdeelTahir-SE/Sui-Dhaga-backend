@@ -226,6 +226,35 @@ export const tailorsService = {
     return updated;
   },
 
+  async uploadTailorBanner(tailorId: string, userId: string | undefined, userRole: string | undefined, file?: Express.Multer.File, data: Record<string, unknown> = {}) {
+    let bannerUrl = (data.bannerUrl || data.banner) as string;
+    if (file) {
+      const fileExt = file.originalname?.split(".").pop() || "png";
+      const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
+      const path = `${tailorId}/banner-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
+      const { url } = await storageService.uploadFile("tailor-banners", path, file.buffer, file.mimetype);
+      bannerUrl = url;
+    }
+
+    if (!bannerUrl) {
+      throw new AppError("Banner image file or bannerUrl is required", 400);
+    }
+
+    const client = getDbClient();
+    let query = client
+      .from("tailors")
+      .update({ banner_url: bannerUrl })
+      .eq("id", tailorId);
+
+    if (userId && userRole !== "admin") {
+      query = query.eq("user_id", userId);
+    }
+
+    const { data: updated, error } = await query.select().single();
+    if (error) throw new AppError(error.message, 400);
+    return updated;
+  },
+
   async deleteAvailabilitySlot(slotId: string, _userId: string | undefined, _userRole: string | undefined) {
     const client = getDbClient();
     const { error } = await client.from("tailor_availability").delete().eq("id", slotId);

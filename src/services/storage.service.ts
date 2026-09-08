@@ -5,6 +5,7 @@ export type StorageBucket =
   | "avatars"
   | "designs"
   | "tailor-gallery"
+  | "tailor-banners"
   | "community-posts"
   | "verification-documents"
   | "message-attachments"

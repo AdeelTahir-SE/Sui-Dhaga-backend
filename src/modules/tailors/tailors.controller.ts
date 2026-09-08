@@ -72,6 +72,11 @@ export const requestVerification: RequestHandler = async (req, res) => {
   success(res, updated, "Verification requested successfully");
 };
 
+export const uploadTailorBanner: RequestHandler = async (req, res) => {
+  const updated = await tailorsService.uploadTailorBanner(asString(req.params.tailorId), req.user?.id, req.userRole, req.file, req.body);
+  success(res, updated, "Shop banner updated successfully");
+};
+
 export const compareTailors: RequestHandler = async (req, res) => {
   success(res, { comparison: req.body }, "Tailors compared successfully");
 };
