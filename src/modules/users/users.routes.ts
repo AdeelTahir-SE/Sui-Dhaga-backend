@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validation.middleware.js";
+import { uploadAvatar } from "../../middlewares/upload.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as usersController from "./users.controller.js";
-import { updateProfileSchema, updateAvatarSchema } from "./users.validator.js";
+import { updateProfileSchema } from "./users.validator.js";
 
 export const usersRoutes = Router();
 
@@ -51,23 +52,54 @@ usersRoutes.delete("/users/me", requireAuth, asyncHandler(usersController.delete
  * @swagger
  * /users/me/avatar:
  *   patch:
- *     summary: Update profile avatar picture
+ *     summary: Upload profile avatar picture to storage and update profile avatar_url
  *     tags: [Users]
  *     security: [{ BearerAuth: [] }]
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
- *             required: [avatarUrl]
+ *             required: [avatar]
  *             properties:
- *               avatarUrl: { type: string, format: uri, example: "https://example.com/avatar.jpg" }
+ *               avatar:
+ *                 type: string
+ *                 format: binary
+ *                 description: Avatar image file (JPEG, PNG, WebP, GIF)
  *     responses:
  *       200:
- *         description: Avatar updated successfully
+ *         description: Avatar uploaded and profile updated successfully
+ *       400:
+ *         description: Invalid file format or missing file
+ *       401:
+ *         description: Unauthorized
+ *   post:
+ *     summary: Upload profile avatar picture to storage and update profile avatar_url
+ *     tags: [Users]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [avatar]
+ *             properties:
+ *               avatar:
+ *                 type: string
+ *                 format: binary
+ *                 description: Avatar image file (JPEG, PNG, WebP, GIF)
+ *     responses:
+ *       200:
+ *         description: Avatar uploaded and profile updated successfully
+ *       400:
+ *         description: Invalid file format or missing file
+ *       401:
+ *         description: Unauthorized
  */
-usersRoutes.patch("/users/me/avatar", requireAuth, validate(updateAvatarSchema), asyncHandler(usersController.updateAvatar));
+usersRoutes.patch("/users/me/avatar", requireAuth, uploadAvatar.single("avatar"), asyncHandler(usersController.updateAvatar));
+usersRoutes.post("/users/me/avatar", requireAuth, uploadAvatar.single("avatar"), asyncHandler(usersController.updateAvatar));
 
 /**
  * @swagger

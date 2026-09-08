@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validation.middleware.js";
+import { uploadMultipleImages } from "../../middlewares/upload.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as communityController from "./community.controller.js";
 import {
@@ -30,13 +31,31 @@ export const communityRoutes = Router();
  *       200:
  *         description: List of posts retrieved successfully
  *   post:
- *     summary: Create a new community post
+ *     summary: Create a new community post with optional images
  *     tags: [Community]
  *     security:
  *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [title, content]
+ *             properties:
+ *               title:
+ *                 type: string
+ *               content:
+ *                 type: string
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Image files to attach (max 5)
+ *               tags:
+ *                 type: string
+ *                 description: Comma-separated tags (e.g. 'wedding,embroidery')
  *         application/json:
  *           schema:
  *             type: object
@@ -59,7 +78,7 @@ export const communityRoutes = Router();
  *         description: Post created successfully
  */
 communityRoutes.get("/community/posts", asyncHandler(communityController.getPosts));
-communityRoutes.post("/community/posts", requireAuth, validate(createCommunityPostSchema), asyncHandler(communityController.createPost));
+communityRoutes.post("/community/posts", requireAuth, uploadMultipleImages("images", 5), validate(createCommunityPostSchema), asyncHandler(communityController.createPost));
 
 /**
  * @openapi

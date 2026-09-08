@@ -1,9 +1,8 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
-import { validate } from "../../middlewares/validation.middleware.js";
+import { uploadSingleImage, uploadMultipleImages, uploadDocument } from "../../middlewares/upload.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as uploadsController from "./uploads.controller.js";
-import { uploadImageSchema, uploadImagesSchema, uploadFileSchema } from "./uploads.validator.js";
 
 export const uploadsRoutes = Router();
 
@@ -18,21 +17,32 @@ export const uploadsRoutes = Router();
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             required: [image]
  *             properties:
  *               image:
  *                 type: string
- *                 description: Base64 data URL or image path
+ *                 format: binary
+ *                 description: Image file to upload (JPEG, PNG, WebP, GIF, SVG)
+ *               folder:
+ *                 type: string
+ *                 description: Optional storage subfolder (default 'general')
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 description: Fallback image URL or data URI
  *               folder:
  *                 type: string
  *     responses:
  *       201:
  *         description: Image uploaded successfully
  */
-uploadsRoutes.post("/uploads/image", requireAuth, validate(uploadImageSchema), asyncHandler(uploadsController.uploadImage));
+uploadsRoutes.post("/uploads/image", requireAuth, uploadSingleImage("image"), asyncHandler(uploadsController.uploadImage));
 
 /**
  * @openapi
@@ -45,10 +55,22 @@ uploadsRoutes.post("/uploads/image", requireAuth, validate(uploadImageSchema), a
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             required: [images]
+ *             properties:
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Image files to upload (max 10)
+ *               folder:
+ *                 type: string
+ *         application/json:
+ *           schema:
+ *             type: object
  *             properties:
  *               images:
  *                 type: array
@@ -60,7 +82,7 @@ uploadsRoutes.post("/uploads/image", requireAuth, validate(uploadImageSchema), a
  *       201:
  *         description: Images uploaded successfully
  */
-uploadsRoutes.post("/uploads/images", requireAuth, validate(uploadImagesSchema), asyncHandler(uploadsController.uploadImages));
+uploadsRoutes.post("/uploads/images", requireAuth, uploadMultipleImages("images", 10), asyncHandler(uploadsController.uploadImages));
 
 /**
  * @openapi
@@ -73,10 +95,20 @@ uploadsRoutes.post("/uploads/images", requireAuth, validate(uploadImagesSchema),
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             required: [file]
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Document file to upload (PDF, DOCX, TXT, images)
+ *               folder:
+ *                 type: string
+ *         application/json:
+ *           schema:
+ *             type: object
  *             properties:
  *               file:
  *                 type: string
@@ -88,7 +120,7 @@ uploadsRoutes.post("/uploads/images", requireAuth, validate(uploadImagesSchema),
  *       201:
  *         description: File uploaded successfully
  */
-uploadsRoutes.post("/uploads/file", requireAuth, validate(uploadFileSchema), asyncHandler(uploadsController.uploadFile));
+uploadsRoutes.post("/uploads/file", requireAuth, uploadDocument("file"), asyncHandler(uploadsController.uploadFile));
 
 /**
  * @openapi

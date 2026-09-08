@@ -2,6 +2,7 @@ import {
   getDbClient,
   toSnakeCase,
 } from "../../utils/resource-helper.js";
+import { storageService } from "../../services/storage.service.js";
 import { AppError } from "../../utils/app-error.js";
 
 export const conversationsService = {
@@ -139,9 +140,21 @@ export const conversationsService = {
     return updated;
   },
 
-  async addAttachment(messageId: string, _userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
+  async addAttachment(messageId: string, _userId: string | undefined, _userRole: string | undefined, file?: Express.Multer.File, data: Record<string, unknown> = {}) {
+    let fileUrl = (data.fileUrl || data.file_url || data.file) as string;
+    if (file) {
+      const fileExt = file.originalname?.split(".").pop() || "png";
+      const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
+      const path = `${messageId}/attach-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
+      const { url } = await storageService.uploadFile("message-attachments", path, file.buffer, file.mimetype);
+      fileUrl = url;
+    }
+
+    if (!fileUrl) {
+      throw new AppError("Attachment file or fileUrl is required", 400);
+    }
+
     const client = getDbClient();
-    const fileUrl = (data.fileUrl || data.file_url) as string;
     const { data: msg } = await client.from("messages").select("attachments").eq("id", messageId).single();
     const currentAttachments = (msg?.attachments as string[]) || [];
 

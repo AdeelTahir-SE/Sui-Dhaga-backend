@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validation.middleware.js";
+import { uploadAnyMedia } from "../../middlewares/upload.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as conversationsController from "./conversations.controller.js";
 import {
@@ -141,7 +142,7 @@ conversationsRoutes.patch("/messages/:messageId/read", requireAuth, asyncHandler
  * @openapi
  * /messages/{messageId}/attachments:
  *   post:
- *     summary: Add an attachment to a message
+ *     summary: Add file or image attachment to a chat message
  *     tags: [Conversations]
  *     security:
  *       - BearerAuth: []
@@ -154,10 +155,19 @@ conversationsRoutes.patch("/messages/:messageId/read", requireAuth, asyncHandler
  *     requestBody:
  *       required: true
  *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Attachment file (Image, PDF, Document)
+ *               fileType:
+ *                 type: string
  *         application/json:
  *           schema:
  *             type: object
- *             required: [fileUrl]
  *             properties:
  *               fileUrl:
  *                 type: string
@@ -168,4 +178,4 @@ conversationsRoutes.patch("/messages/:messageId/read", requireAuth, asyncHandler
  *       201:
  *         description: Attachment added successfully
  */
-conversationsRoutes.post("/messages/:messageId/attachments", requireAuth, validate(addAttachmentSchema), asyncHandler(conversationsController.addAttachment));
+conversationsRoutes.post("/messages/:messageId/attachments", requireAuth, uploadAnyMedia("file"), validate(addAttachmentSchema), asyncHandler(conversationsController.addAttachment));

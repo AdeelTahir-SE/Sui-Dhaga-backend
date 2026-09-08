@@ -6,5 +6,5 @@ export interface UpdateProfilePayload {
 }
 
 export interface UpdateAvatarPayload {
-  avatarUrl: string;
+  avatarUrl?: string;
 }

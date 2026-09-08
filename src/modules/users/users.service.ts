@@ -1,5 +1,6 @@
 import { getDbClient, toSnakeCase } from "../../utils/resource-helper.js";
 import { AppError } from "../../utils/app-error.js";
+import { storageService } from "../../services/storage.service.js";
 
 export const usersService = {
   async getMyProfile(userId: string, _userRole?: string) {
@@ -34,11 +35,23 @@ export const usersService = {
     return updated;
   },
 
-  async updateAvatar(userId: string, _userRole: string | undefined, avatarUrl: string) {
+  async updateAvatar(userId: string, _userRole: string | undefined, file: Express.Multer.File) {
+    if (!file || !file.buffer) {
+      throw new AppError("Avatar file is required", 400);
+    }
+
+    const fileExt = file.originalname?.split(".").pop() || "png";
+    const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
+    const fileName = `${userId}/avatar-${Date.now()}.${cleanExt || "png"}`;
+
+    // Upload file to Supabase 'avatars' storage bucket
+    const { url } = await storageService.uploadFile("avatars", fileName, file.buffer, file.mimetype);
+
+    // Save avatar_url in profiles table
     const client = getDbClient();
     const { data: updated, error } = await client
       .from("profiles")
-      .update({ avatar_url: avatarUrl })
+      .update({ avatar_url: url })
       .eq("id", userId)
       .select()
       .single();

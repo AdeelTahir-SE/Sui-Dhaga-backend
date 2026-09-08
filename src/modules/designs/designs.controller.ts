@@ -21,12 +21,14 @@ export const textToDesign: RequestHandler = async (req, res) => {
 };
 
 export const imageToDesign: RequestHandler = async (req, res) => {
-  const result = await designsService.imageToDesign(req.user?.id, req.userRole, req.body.imageUrl);
+  const prompt = req.body.instructions || req.body.prompt;
+  const result = await designsService.imageToDesign(req.user?.id, req.userRole, req.body.imageUrl, req.file, prompt);
   success(res, result, "Image to design generated successfully", 201);
 };
 
 export const sketchToDesign: RequestHandler = async (req, res) => {
-  const result = await designsService.sketchToDesign(req.user?.id, req.userRole, req.body.sketchUrl);
+  const prompt = req.body.instructions || req.body.prompt;
+  const result = await designsService.sketchToDesign(req.user?.id, req.userRole, req.body.sketchUrl, req.file, prompt);
   success(res, result, "Sketch to design generated successfully", 201);
 };
 

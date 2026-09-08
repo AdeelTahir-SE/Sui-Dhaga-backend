@@ -8,5 +8,5 @@ export const updateProfileSchema = z.object({
 });
 
 export const updateAvatarSchema = z.object({
-  avatarUrl: z.string().url(),
+  avatarUrl: z.string().url().optional(),
 });

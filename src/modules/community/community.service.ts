@@ -4,6 +4,7 @@ import {
   fetchTableData,
   deleteTableData,
 } from "../../utils/resource-helper.js";
+import { storageService } from "../../services/storage.service.js";
 import { AppError } from "../../utils/app-error.js";
 
 export const communityService = {
@@ -32,10 +33,36 @@ export const communityService = {
     return data;
   },
 
-  async createPost(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
+  async createPost(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>, files?: Express.Multer.File[]) {
     if (!userId) throw new AppError("Authentication required", 401);
     const client = getDbClient();
     const mapped = toSnakeCase(data);
+
+    let imageUrls: string[] = Array.isArray(data.images) ? [...(data.images as string[])] : [];
+    if (typeof data.images === "string") {
+      imageUrls = [data.images];
+    }
+
+    if (files && files.length > 0) {
+      const uploadPromises = files.map(async (file) => {
+        const fileExt = file.originalname?.split(".").pop() || "png";
+        const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
+        const path = `${userId}/post-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
+        const { url } = await storageService.uploadFile("community-posts", path, file.buffer, file.mimetype);
+        return url;
+      });
+      const uploadedUrls = await Promise.all(uploadPromises);
+      imageUrls = [...imageUrls, ...uploadedUrls];
+    }
+
+    if (imageUrls.length > 0) {
+      mapped.images = imageUrls;
+    }
+
+    if (typeof mapped.tags === "string") {
+      mapped.tags = (mapped.tags as string).split(",").map((t) => t.trim()).filter(Boolean);
+    }
+
     const { data: created, error } = await client
       .from("community_posts")
       .insert({

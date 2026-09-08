@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { requireRole } from "../../middlewares/role.middleware.js";
 import { validate } from "../../middlewares/validation.middleware.js";
+import { uploadSingleImage } from "../../middlewares/upload.middleware.js";
 import { aiLimiter } from "../../middlewares/rate-limit.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as designsController from "./designs.controller.js";
@@ -146,17 +147,28 @@ designsRoutes.post("/designs/text-to-design", ...designAuth, aiLimiter, validate
  * @openapi
  * /designs/image-to-design:
  *   post:
- *     summary: Generate design variation from an image URL
+ *     summary: Generate design variation from an uploaded image file or URL
  *     tags: [Designs]
  *     security:
  *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Inspiration outfit image file (JPEG, PNG, WebP)
+ *               instructions:
+ *                 type: string
+ *               prompt:
+ *                 type: string
  *         application/json:
  *           schema:
  *             type: object
- *             required: [imageUrl]
  *             properties:
  *               imageUrl:
  *                 type: string
@@ -167,7 +179,7 @@ designsRoutes.post("/designs/text-to-design", ...designAuth, aiLimiter, validate
  *       201:
  *         description: Design generated successfully
  */
-designsRoutes.post("/designs/image-to-design", ...designAuth, aiLimiter, validate(imageToDesignSchema), asyncHandler(designsController.imageToDesign));
+designsRoutes.post("/designs/image-to-design", ...designAuth, aiLimiter, uploadSingleImage("image"), validate(imageToDesignSchema), asyncHandler(designsController.imageToDesign));
 
 /**
  * @openapi
@@ -180,10 +192,21 @@ designsRoutes.post("/designs/image-to-design", ...designAuth, aiLimiter, validat
  *     requestBody:
  *       required: true
  *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sketch:
+ *                 type: string
+ *                 format: binary
+ *                 description: Hand-drawn sketch image file (JPEG, PNG, WebP)
+ *               instructions:
+ *                 type: string
+ *               prompt:
+ *                 type: string
  *         application/json:
  *           schema:
  *             type: object
- *             required: [sketchUrl]
  *             properties:
  *               sketchUrl:
  *                 type: string
@@ -194,7 +217,7 @@ designsRoutes.post("/designs/image-to-design", ...designAuth, aiLimiter, validat
  *       201:
  *         description: Design generated successfully
  */
-designsRoutes.post("/designs/sketch-to-design", ...designAuth, aiLimiter, validate(sketchToDesignSchema), asyncHandler(designsController.sketchToDesign));
+designsRoutes.post("/designs/sketch-to-design", ...designAuth, aiLimiter, uploadSingleImage("sketch"), validate(sketchToDesignSchema), asyncHandler(designsController.sketchToDesign));
 
 /**
  * @openapi

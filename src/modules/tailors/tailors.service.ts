@@ -4,6 +4,7 @@ import {
   fetchTableData,
   deleteTableData,
 } from "../../utils/resource-helper.js";
+import { storageService } from "../../services/storage.service.js";
 import { AppError } from "../../utils/app-error.js";
 
 export const tailorsService = {
@@ -146,6 +147,78 @@ export const tailorsService = {
       .from("tailor_availability")
       .update(mapped)
       .eq("id", slotId)
+      .select()
+      .single();
+
+    if (error) throw new AppError(error.message, 400);
+    return updated;
+  },
+
+  async addGalleryImage(tailorId: string, _userId: string | undefined, _userRole: string | undefined, file?: Express.Multer.File, data: Record<string, unknown> = {}) {
+    let imageUrl = (data.imageUrl || data.image) as string;
+    if (file) {
+      const fileExt = file.originalname?.split(".").pop() || "png";
+      const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
+      const path = `${tailorId}/gallery-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
+      const { url } = await storageService.uploadFile("tailor-gallery", path, file.buffer, file.mimetype);
+      imageUrl = url;
+    }
+
+    if (!imageUrl) {
+      throw new AppError("Gallery image file or imageUrl is required", 400);
+    }
+
+    const client = getDbClient();
+    const { data: created, error } = await client
+      .from("tailor_gallery")
+      .insert({
+        tailor_id: tailorId,
+        image_url: imageUrl,
+        caption: data.caption || "",
+      })
+      .select()
+      .single();
+
+    if (error) {
+      // Fallback: update tailor's portfolio/gallery column directly if tailor_gallery table is not used
+      const { data: tailor, error: tailorError } = await client
+        .from("tailors")
+        .update({
+          portfolio: [{ id: `img-${Date.now()}`, url: imageUrl, caption: data.caption || "" }],
+        })
+        .eq("id", tailorId)
+        .select()
+        .single();
+      if (tailorError) throw new AppError(error.message, 400);
+      return tailor;
+    }
+
+    return created;
+  },
+
+  async requestVerification(tailorId: string, _userId: string | undefined, _userRole: string | undefined, file?: Express.Multer.File, data: Record<string, unknown> = {}) {
+    let documentUrl = (data.documentUrl || data.document) as string;
+    if (file) {
+      const fileExt = file.originalname?.split(".").pop() || "pdf";
+      const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
+      const path = `${tailorId}/verify-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "pdf"}`;
+      const { url } = await storageService.uploadFile("verification-documents", path, file.buffer, file.mimetype);
+      documentUrl = url;
+    }
+
+    const client = getDbClient();
+    const updatePayload: Record<string, unknown> = {
+      verification_status: "pending",
+      verified: false,
+    };
+    if (documentUrl) {
+      updatePayload.verification_document_url = documentUrl;
+    }
+
+    const { data: updated, error } = await client
+      .from("tailors")
+      .update(updatePayload)
+      .eq("id", tailorId)
       .select()
       .single();
 

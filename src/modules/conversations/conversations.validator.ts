@@ -11,6 +11,7 @@ export const sendMessageSchema = z.object({
 });
 
 export const addAttachmentSchema = z.object({
-  fileUrl: z.string().url(),
+  fileUrl: z.string().url().optional(),
+  file: z.string().optional(),
   fileType: z.string().optional(),
 });

@@ -11,7 +11,8 @@ export const getPosts: RequestHandler = async (req, res) => {
 };
 
 export const createPost: RequestHandler = async (req, res) => {
-  const created = await communityService.createPost(req.user?.id, req.userRole, req.body);
+  const files = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : undefined);
+  const created = await communityService.createPost(req.user?.id, req.userRole, req.body, files);
   success(res, created, "Community post created successfully", 201);
 };
 

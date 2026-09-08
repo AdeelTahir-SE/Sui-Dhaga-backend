@@ -1,6 +1,7 @@
 import type { RequestHandler } from "express";
 import { success } from "../../utils/api-response.js";
 import { asString } from "../../utils/resource-helper.js";
+import { AppError } from "../../utils/app-error.js";
 import { usersService } from "./users.service.js";
 
 export const getMyProfile: RequestHandler = async (req, res) => {
@@ -14,7 +15,10 @@ export const updateMyProfile: RequestHandler = async (req, res) => {
 };
 
 export const updateAvatar: RequestHandler = async (req, res) => {
-  const updated = await usersService.updateAvatar(req.user!.id, req.userRole, req.body.avatarUrl);
+  if (!req.file) {
+    throw new AppError("Avatar file is required", 400);
+  }
+  const updated = await usersService.updateAvatar(req.user!.id, req.userRole, req.file);
   success(res, updated, "Avatar updated successfully");
 };
 

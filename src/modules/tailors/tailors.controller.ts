@@ -58,7 +58,7 @@ export const deleteTailor: RequestHandler = async (req, res) => {
 };
 
 export const addGalleryImage: RequestHandler = async (req, res) => {
-  const updated = await tailorsService.updateTailor(asString(req.params.tailorId), req.user?.id, req.userRole, req.body);
+  const updated = await tailorsService.addGalleryImage(asString(req.params.tailorId), req.user?.id, req.userRole, req.file, req.body);
   success(res, updated, "Gallery image added successfully", 201);
 };
 
@@ -68,7 +68,7 @@ export const deleteGalleryImage: RequestHandler = async (req, res) => {
 };
 
 export const requestVerification: RequestHandler = async (req, res) => {
-  const updated = await tailorsService.updateTailor(asString(req.params.tailorId), req.user?.id, req.userRole, { verified: true });
+  const updated = await tailorsService.requestVerification(asString(req.params.tailorId), req.user?.id, req.userRole, req.file, req.body);
   success(res, updated, "Verification requested successfully");
 };
 

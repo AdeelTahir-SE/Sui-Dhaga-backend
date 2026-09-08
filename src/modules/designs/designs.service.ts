@@ -5,6 +5,7 @@ import {
   deleteTableData,
 } from "../../utils/resource-helper.js";
 import { aiService } from "../../services/ai.service.js";
+import { storageService } from "../../services/storage.service.js";
 import { AppError } from "../../utils/app-error.js";
 
 export const designsService = {
@@ -86,11 +87,24 @@ export const designsService = {
     });
   },
 
-  async imageToDesign(userId: string | undefined, userRole: string | undefined, imageUrl: string, prompt?: string) {
-    const aiResult = await aiService.generateImageToDesign(imageUrl, prompt);
+  async imageToDesign(userId: string | undefined, userRole: string | undefined, imageUrl?: string, file?: Express.Multer.File, prompt?: string) {
+    let finalImageUrl = imageUrl;
+    if (file) {
+      const fileExt = file.originalname?.split(".").pop() || "png";
+      const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
+      const path = `${userId || "guest"}/input-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
+      const { url } = await storageService.uploadFile("designs", path, file.buffer, file.mimetype);
+      finalImageUrl = url;
+    }
+
+    if (!finalImageUrl) {
+      throw new AppError("Image file or imageUrl is required", 400);
+    }
+
+    const aiResult = await aiService.generateImageToDesign(finalImageUrl, prompt);
     return this.createDesign(userId, userRole, {
       type: "image-to-design",
-      original_image_url: imageUrl,
+      original_image_url: finalImageUrl,
       prompt,
       enhanced_prompt: aiResult.promptUsed,
       image_url: aiResult.imageUrl,
@@ -99,11 +113,24 @@ export const designsService = {
     });
   },
 
-  async sketchToDesign(userId: string | undefined, userRole: string | undefined, sketchUrl: string, prompt?: string) {
-    const aiResult = await aiService.generateSketchToDesign(sketchUrl, prompt);
+  async sketchToDesign(userId: string | undefined, userRole: string | undefined, sketchUrl?: string, file?: Express.Multer.File, prompt?: string) {
+    let finalSketchUrl = sketchUrl;
+    if (file) {
+      const fileExt = file.originalname?.split(".").pop() || "png";
+      const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
+      const path = `${userId || "guest"}/sketch-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
+      const { url } = await storageService.uploadFile("designs", path, file.buffer, file.mimetype);
+      finalSketchUrl = url;
+    }
+
+    if (!finalSketchUrl) {
+      throw new AppError("Sketch file or sketchUrl is required", 400);
+    }
+
+    const aiResult = await aiService.generateSketchToDesign(finalSketchUrl, prompt);
     return this.createDesign(userId, userRole, {
       type: "sketch-to-design",
-      sketch_url: sketchUrl,
+      sketch_url: finalSketchUrl,
       prompt,
       enhanced_prompt: aiResult.promptUsed,
       image_url: aiResult.imageUrl,

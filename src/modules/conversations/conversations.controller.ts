@@ -38,6 +38,6 @@ export const markAsRead: RequestHandler = async (req, res) => {
 };
 
 export const addAttachment: RequestHandler = async (req, res) => {
-  const updated = await conversationsService.addAttachment(asString(req.params.messageId), req.user?.id, req.userRole, req.body);
+  const updated = await conversationsService.addAttachment(asString(req.params.messageId), req.user?.id, req.userRole, req.file, req.body);
   success(res, updated, "Attachment added successfully", 201);
 };

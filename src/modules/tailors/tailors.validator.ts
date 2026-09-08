@@ -15,8 +15,15 @@ export const updateTailorSchema = createTailorSchema.partial().extend({
 });
 
 export const addGalleryImageSchema = z.object({
-  imageUrl: z.string().url(),
+  imageUrl: z.string().url().optional(),
+  image: z.string().optional(),
   caption: z.string().optional(),
+});
+
+export const requestVerificationSchema = z.object({
+  documentUrl: z.string().url().optional(),
+  documentType: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 export const tailorServiceSchema = z.object({

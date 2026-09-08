@@ -8,13 +8,17 @@ export const textToDesignSchema = z.object({
 });
 
 export const imageToDesignSchema = z.object({
-  imageUrl: z.string().url(),
+  imageUrl: z.string().url().optional(),
+  image: z.string().optional(),
   instructions: z.string().optional(),
+  prompt: z.string().optional(),
 });
 
 export const sketchToDesignSchema = z.object({
-  sketchUrl: z.string().url(),
+  sketchUrl: z.string().url().optional(),
+  sketch: z.string().optional(),
   instructions: z.string().optional(),
+  prompt: z.string().optional(),
 });
 
 export const designChatSchema = z.object({

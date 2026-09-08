@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { requireRole } from "../../middlewares/role.middleware.js";
 import { validate } from "../../middlewares/validation.middleware.js";
+import { uploadSingleImage, uploadDocument } from "../../middlewares/upload.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as tailorsController from "./tailors.controller.js";
 import {
@@ -356,10 +357,19 @@ tailorsRoutes.get("/tailors/:tailorId/reviews", asyncHandler(tailorsController.g
  *     requestBody:
  *       required: true
  *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Portfolio/gallery image file (JPEG, PNG, WebP)
+ *               caption:
+ *                 type: string
  *         application/json:
  *           schema:
  *             type: object
- *             required: [imageUrl]
  *             properties:
  *               imageUrl: { type: string, format: uri }
  *               caption: { type: string }
@@ -367,7 +377,7 @@ tailorsRoutes.get("/tailors/:tailorId/reviews", asyncHandler(tailorsController.g
  *       201:
  *         description: Gallery image added
  */
-tailorsRoutes.post("/tailors/:tailorId/gallery", requireAuth, requireRole("tailor", "admin"), validate(addGalleryImageSchema), asyncHandler(tailorsController.addGalleryImage));
+tailorsRoutes.post("/tailors/:tailorId/gallery", requireAuth, requireRole("tailor", "admin"), uploadSingleImage("image"), validate(addGalleryImageSchema), asyncHandler(tailorsController.addGalleryImage));
 
 /**
  * @swagger
@@ -395,7 +405,7 @@ tailorsRoutes.delete("/tailors/:tailorId/gallery/:imageId", requireAuth, require
  * @swagger
  * /tailors/{tailorId}/verify:
  *   post:
- *     summary: Request verification badge for tailor profile
+ *     summary: Request verification badge for tailor profile with document upload
  *     tags: [Tailors]
  *     security: [{ BearerAuth: [] }]
  *     parameters:
@@ -403,9 +413,27 @@ tailorsRoutes.delete("/tailors/:tailorId/gallery/:imageId", requireAuth, require
  *         name: tailorId
  *         required: true
  *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               document:
+ *                 type: string
+ *                 format: binary
+ *                 description: Verification document (CNIC, trade license, or certificate in PDF/Image format)
+ *               notes:
+ *                 type: string
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               documentUrl: { type: string, format: uri }
+ *               notes: { type: string }
  *     responses:
  *       200:
  *         description: Verification requested
  */
-tailorsRoutes.post("/tailors/:tailorId/verify", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.requestVerification));
+tailorsRoutes.post("/tailors/:tailorId/verify", requireAuth, requireRole("tailor", "admin"), uploadDocument("document"), asyncHandler(tailorsController.requestVerification));
 
