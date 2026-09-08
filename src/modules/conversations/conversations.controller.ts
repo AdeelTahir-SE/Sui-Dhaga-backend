@@ -20,6 +20,13 @@ export const getConversationById: RequestHandler = async (req, res) => {
   success(res, conversation, "Conversation fetched successfully");
 };
 
+export const checkConversationExists: RequestHandler = async (req, res) => {
+  const tailorId = asString(req.params.tailorId);
+  const clientId = asString(req.params.clientId);
+  const result = await conversationsService.checkConversationExists(tailorId, clientId, req.user?.id, req.userRole);
+  success(res, result, result?.exists ? "Conversation exists" : "Conversation does not exist");
+};
+
 export const getMessages: RequestHandler = async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));

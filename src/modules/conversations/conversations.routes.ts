@@ -71,6 +71,34 @@ conversationsRoutes.get("/conversations/:conversationId", requireAuth, asyncHand
 
 /**
  * @openapi
+ * /conversations/{tailorId}/{clientId}:
+ *   get:
+ *     summary: Check if a conversation exists between a tailor and client
+ *     tags: [Conversations]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tailor ID (participant2_id)
+ *       - in: path
+ *         name: clientId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Client ID (participant1_id)
+ *     responses:
+ *       200:
+ *         description: Conversation existence status and data
+ */
+conversationsRoutes.get("/conversations/:tailorId/:clientId", requireAuth, asyncHandler(conversationsController.checkConversationExists));
+conversationsRoutes.get("/conversation/:tailorId/:clientId", requireAuth, asyncHandler(conversationsController.checkConversationExists));
+
+/**
+ * @openapi
  * /conversations/{conversationId}/messages:
  *   get:
  *     summary: Get messages in a conversation

@@ -120,6 +120,7 @@ Base URL:
 | GET    | /conversations                           |
 | POST   | /conversations                           |
 | GET    | /conversations/[conversationId]          |
+| GET    | /conversations/[tailorId]/[clientId]     |
 | GET    | /conversations/[conversationId]/messages |
 | POST   | /conversations/[conversationId]/messages |
 | PATCH  | /messages/[messageId]/read               |

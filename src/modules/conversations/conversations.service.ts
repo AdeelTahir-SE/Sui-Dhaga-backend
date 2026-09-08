@@ -48,6 +48,25 @@ export const conversationsService = {
     return data;
   },
 
+  async checkConversationExists(tailorId: string, clientId: string, _userId?: string, _userRole?: string) {
+    const client = getDbClient();
+    const { data, error } = await client
+      .from("conversations")
+      .select("*, participant1:profiles!participant1_id(*), participant2:profiles!participant2_id(*)")
+      .eq("participant1_id", clientId)
+      .eq("participant2_id", tailorId)
+      .maybeSingle();
+
+    if (error && error.code !== "PGRST116") {
+      throw new AppError(error.message, 400);
+    }
+
+    return {
+      exists: Boolean(data),
+      conversation: data ?? null,
+    };
+  },
+
   async createConversation(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
     if (!userId) throw new AppError("Authentication required", 401);
     const client = getDbClient();
