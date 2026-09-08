@@ -48,18 +48,23 @@ export const conversationsService = {
     return data;
   },
 
-  async checkConversationExists(tailorId: string, clientId: string, _userId?: string, _userRole?: string) {
+  async getConversationByParticipants(tailorId: string, clientId: string, _userId?: string, _userRole?: string) {
     const client = getDbClient();
     const { data, error } = await client
       .from("conversations")
-      .select("*, participant1:profiles!participant1_id(*), participant2:profiles!participant2_id(*)")
-      .eq("participant1_id", clientId)
-      .eq("participant2_id", tailorId)
+      .select("*, participant1:profiles!participant1_id(*), participant2:profiles!participant2_id(*), messages(*)")
+      .or(`and(participant1_id.eq.${clientId},participant2_id.eq.${tailorId}),and(participant1_id.eq.${tailorId},participant2_id.eq.${clientId})`)
       .maybeSingle();
 
     if (error && error.code !== "PGRST116") {
       throw new AppError(error.message, 400);
     }
+
+    return data;
+  },
+
+  async checkConversationExists(tailorId: string, clientId: string, userId?: string, userRole?: string) {
+    const data = await this.getConversationByParticipants(tailorId, clientId, userId, userRole);
 
     return {
       exists: Boolean(data),
@@ -67,33 +72,66 @@ export const conversationsService = {
     };
   },
 
-  async createConversation(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
-    if (!userId) throw new AppError("Authentication required", 401);
+  async getOrCreateConversation(tailorId: string, clientId: string, initialMessage?: string, senderId?: string) {
     const client = getDbClient();
-    const participantId = (data.participantId || data.participant_id) as string;
-    if (!participantId) throw new AppError("Participant ID is required", 400);
+    let conversation = await this.getConversationByParticipants(tailorId, clientId);
 
-    const { data: created, error } = await client
-      .from("conversations")
-      .insert({
-        participant1_id: userId,
-        participant2_id: participantId,
-        last_message: (data.initialMessage || data.last_message || "") as string,
-      })
-      .select("*, participant1:profiles!participant1_id(*), participant2:profiles!participant2_id(*)")
-      .single();
+    if (!conversation) {
+      const { data: created, error } = await client
+        .from("conversations")
+        .insert({
+          participant1_id: clientId, // participant1 = client
+          participant2_id: tailorId, // participant2 = tailor
+          last_message: initialMessage || "",
+        })
+        .select("*, participant1:profiles!participant1_id(*), participant2:profiles!participant2_id(*)")
+        .single();
 
-    if (error) throw new AppError(error.message, 400);
+      if (error) throw new AppError(error.message, 400);
+      conversation = created;
 
-    if (data.initialMessage) {
-      await client.from("messages").insert({
-        conversation_id: created.id,
-        sender_id: userId,
-        text: data.initialMessage,
-      });
+      if (initialMessage && senderId) {
+        await client.from("messages").insert({
+          conversation_id: created.id,
+          sender_id: senderId,
+          text: initialMessage,
+        });
+      }
     }
 
-    return created;
+    return conversation;
+  },
+
+  async createConversation(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
+    if (!userId) throw new AppError("Authentication required", 401);
+
+    const tailorId = (data.tailorId || data.tailor_id || data.participant2Id || data.participant2_id || data.participantId || data.participant_id) as string;
+    const clientId = (data.clientId || data.client_id || data.participant1Id || data.participant1_id || userId) as string;
+
+    if (!tailorId) {
+      throw new AppError("Tailor ID (participant 2) or Participant ID is required", 400);
+    }
+
+    const initialMessage = (data.initialMessage || data.last_message || "") as string;
+    return this.getOrCreateConversation(tailorId, clientId, initialMessage, userId);
+  },
+
+  async getMessagesByParticipants(tailorId: string, clientId: string, userId: string | undefined, userRole: string | undefined, page = 1, limit = 50) {
+    const conversation = await this.getConversationByParticipants(tailorId, clientId, userId, userRole);
+
+    if (!conversation) {
+      const p = Math.max(1, page);
+      const l = Math.min(100, Math.max(1, limit));
+      return {
+        records: [],
+        page: p,
+        limit: l,
+        total: 0,
+        singleRecord: null,
+      };
+    }
+
+    return this.getMessages(conversation.id, userId, userRole, page, limit);
   },
 
   async getMessages(conversationId: string, _userId: string | undefined, _userRole: string | undefined, page = 1, limit = 50) {
@@ -117,6 +155,15 @@ export const conversationsService = {
       total: count ?? 0,
       singleRecord: null,
     };
+  },
+
+  async sendMessageByParticipants(tailorId: string, clientId: string, userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>) {
+    if (!userId) throw new AppError("Authentication required", 401);
+
+    const initialText = (data.text as string) || "Attachment sent";
+    const conversation = await this.getOrCreateConversation(tailorId, clientId, initialText, userId);
+
+    return this.sendMessage(conversation.id, userId, userRole, data);
   },
 
   async sendMessage(conversationId: string, userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {

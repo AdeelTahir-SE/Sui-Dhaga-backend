@@ -20,11 +20,22 @@ export const conversationsRoutes = Router();
  *     tags: [Conversations]
  *     security:
  *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
  *     responses:
  *       200:
  *         description: List of conversations retrieved successfully
  *   post:
- *     summary: Start a new conversation
+ *     summary: Start or get an existing conversation
  *     tags: [Conversations]
  *     security:
  *       - BearerAuth: []
@@ -34,18 +45,125 @@ export const conversationsRoutes = Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required: [participantId]
  *             properties:
+ *               tailorId:
+ *                 type: string
+ *                 description: Tailor ID (participant 2)
+ *               clientId:
+ *                 type: string
+ *                 description: Client ID (participant 1, defaults to authenticated user)
  *               participantId:
  *                 type: string
+ *                 description: Target participant ID
  *               initialMessage:
  *                 type: string
  *     responses:
  *       201:
- *         description: Conversation created successfully
+ *         description: Conversation created or retrieved successfully
  */
 conversationsRoutes.get("/conversations", requireAuth, asyncHandler(conversationsController.getConversations));
 conversationsRoutes.post("/conversations", requireAuth, validate(createConversationSchema), asyncHandler(conversationsController.createConversation));
+
+/**
+ * @openapi
+ * /conversations/{tailorId}/{clientId}/messages:
+ *   get:
+ *     summary: Get messages in conversation between tailor and client
+ *     tags: [Conversations]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tailor ID (participant 2)
+ *       - in: path
+ *         name: clientId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Client ID (participant 1)
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *     responses:
+ *       200:
+ *         description: Messages retrieved successfully
+ *   post:
+ *     summary: Send a message in conversation between tailor and client
+ *     tags: [Conversations]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tailor ID (participant 2)
+ *       - in: path
+ *         name: clientId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Client ID (participant 1)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [text]
+ *             properties:
+ *               text:
+ *                 type: string
+ *               attachments:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       201:
+ *         description: Message sent successfully
+ */
+conversationsRoutes.get("/conversations/:tailorId/:clientId/messages", requireAuth, asyncHandler(conversationsController.getMessagesByTailorAndClient));
+conversationsRoutes.post("/conversations/:tailorId/:clientId/messages", requireAuth, validate(sendMessageSchema), asyncHandler(conversationsController.sendMessageByTailorAndClient));
+
+/**
+ * @openapi
+ * /conversations/{tailorId}/{clientId}:
+ *   get:
+ *     summary: Get or check conversation between tailor and client
+ *     tags: [Conversations]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tailor ID (participant 2)
+ *       - in: path
+ *         name: clientId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Client ID (participant 1)
+ *     responses:
+ *       200:
+ *         description: Conversation existence status and data
+ */
+conversationsRoutes.get("/conversations/:tailorId/:clientId", requireAuth, asyncHandler(conversationsController.checkConversationExists));
+conversationsRoutes.get("/conversation/:tailorId/:clientId", requireAuth, asyncHandler(conversationsController.checkConversationExists));
 
 /**
  * @openapi
@@ -71,37 +189,9 @@ conversationsRoutes.get("/conversations/:conversationId", requireAuth, asyncHand
 
 /**
  * @openapi
- * /conversations/{tailorId}/{clientId}:
- *   get:
- *     summary: Check if a conversation exists between a tailor and client
- *     tags: [Conversations]
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: tailorId
- *         required: true
- *         schema:
- *           type: string
- *         description: Tailor ID (participant2_id)
- *       - in: path
- *         name: clientId
- *         required: true
- *         schema:
- *           type: string
- *         description: Client ID (participant1_id)
- *     responses:
- *       200:
- *         description: Conversation existence status and data
- */
-conversationsRoutes.get("/conversations/:tailorId/:clientId", requireAuth, asyncHandler(conversationsController.checkConversationExists));
-conversationsRoutes.get("/conversation/:tailorId/:clientId", requireAuth, asyncHandler(conversationsController.checkConversationExists));
-
-/**
- * @openapi
  * /conversations/{conversationId}/messages:
  *   get:
- *     summary: Get messages in a conversation
+ *     summary: Get messages in a conversation by conversation ID
  *     tags: [Conversations]
  *     security:
  *       - BearerAuth: []
@@ -115,7 +205,7 @@ conversationsRoutes.get("/conversation/:tailorId/:clientId", requireAuth, asyncH
  *       200:
  *         description: Messages retrieved successfully
  *   post:
- *     summary: Send a message in a conversation
+ *     summary: Send a message in a conversation by conversation ID
  *     tags: [Conversations]
  *     security:
  *       - BearerAuth: []
@@ -207,3 +297,4 @@ conversationsRoutes.patch("/messages/:messageId/read", requireAuth, asyncHandler
  *         description: Attachment added successfully
  */
 conversationsRoutes.post("/messages/:messageId/attachments", requireAuth, uploadAnyMedia("file"), validate(addAttachmentSchema), asyncHandler(conversationsController.addAttachment));
+

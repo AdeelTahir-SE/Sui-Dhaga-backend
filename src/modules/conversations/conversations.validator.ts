@@ -1,7 +1,9 @@
 import { z } from "zod";
 
 export const createConversationSchema = z.object({
-  participantId: z.string().min(1),
+  tailorId: z.string().optional(),
+  clientId: z.string().optional(),
+  participantId: z.string().optional(),
   initialMessage: z.string().optional(),
 });
 
@@ -15,3 +17,4 @@ export const addAttachmentSchema = z.object({
   file: z.string().optional(),
   fileType: z.string().optional(),
 });
+

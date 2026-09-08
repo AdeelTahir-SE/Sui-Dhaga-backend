@@ -115,16 +115,18 @@ Base URL:
 
 # Conversations & Messages
 
-| Method | Endpoint                                 |
-| ------ | ---------------------------------------- |
-| GET    | /conversations                           |
-| POST   | /conversations                           |
-| GET    | /conversations/[conversationId]          |
-| GET    | /conversations/[tailorId]/[clientId]     |
-| GET    | /conversations/[conversationId]/messages |
-| POST   | /conversations/[conversationId]/messages |
-| PATCH  | /messages/[messageId]/read               |
-| POST   | /messages/[messageId]/attachments        |
+| Method | Endpoint                                          |
+| ------ | ------------------------------------------------- |
+| GET    | /conversations                                    |
+| POST   | /conversations                                    |
+| GET    | /conversations/[tailorId]/[clientId]              |
+| GET    | /conversations/[tailorId]/[clientId]/messages     |
+| POST   | /conversations/[tailorId]/[clientId]/messages     |
+| GET    | /conversations/[conversationId]                   |
+| GET    | /conversations/[conversationId]/messages          |
+| POST   | /conversations/[conversationId]/messages          |
+| PATCH  | /messages/[messageId]/read                        |
+| POST   | /messages/[messageId]/attachments                 |
 
 ---
 

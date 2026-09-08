@@ -1,6 +1,12 @@
 export interface CreateConversationPayload {
-  participantId: string;
+  tailorId?: string;
+  clientId?: string;
+  participantId?: string;
+  participant_id?: string;
+  tailor_id?: string;
+  client_id?: string;
   initialMessage?: string;
+  last_message?: string;
 }
 
 export interface SendMessagePayload {
@@ -9,6 +15,8 @@ export interface SendMessagePayload {
 }
 
 export interface AddAttachmentPayload {
-  fileUrl: string;
+  fileUrl?: string;
+  file?: string;
   fileType?: string;
 }
+
