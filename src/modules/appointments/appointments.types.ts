@@ -1,8 +1,8 @@
 export interface CreateAppointmentPayload {
   tailorId: string;
   serviceId?: string;
-  date: string;
-  time: string;
+  appointment_date: string;
+  appointment_time: string;
   notes?: string;
 }
 
@@ -11,6 +11,6 @@ export interface UpdateAppointmentStatusPayload {
 }
 
 export interface RescheduleAppointmentPayload {
-  date: string;
-  time: string;
+  appointment_date: string;
+  appointment_time: string;
 }

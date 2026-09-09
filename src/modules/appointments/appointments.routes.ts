@@ -45,8 +45,8 @@ const appointmentAuth = [requireAuth, requireRole("customer", "tailor", "admin")
  *             properties:
  *               tailorId: { type: string, format: uuid }
  *               serviceId: { type: string, format: uuid }
- *               date: { type: string, example: "2026-09-15" }
- *               time: { type: string, example: "14:00" }
+ *               appointment_date: { type: string, example: "2026-09-15" }
+ *               appointment_time: { type: string, example: "14:00" }
  *               notes: { type: string }
  *     responses:
  *       201:
@@ -131,10 +131,10 @@ appointmentsRoutes.patch("/appointments/:appointmentId/status", ...appointmentAu
  *         application/json:
  *           schema:
  *             type: object
- *             required: [date, time]
+ *             required: [appointment_date, appointment_time]
  *             properties:
- *               date: { type: string, example: "2026-09-20" }
- *               time: { type: string, example: "16:00" }
+ *               appointment_date: { type: string, example: "2026-09-20" }
+ *               appointment_time: { type: string, example: "16:00" }
  *     responses:
  *       200:
  *         description: Appointment rescheduled
