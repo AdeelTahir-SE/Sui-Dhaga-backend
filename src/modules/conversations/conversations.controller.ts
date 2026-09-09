@@ -46,7 +46,7 @@ export const getMessagesByTailorAndClient: RequestHandler = async (req, res) => 
 export const sendMessageByTailorAndClient: RequestHandler = async (req, res) => {
   const tailorId = asString(req.params.tailorId);
   const clientId = asString(req.params.clientId);
-  const message = await conversationsService.sendMessageByParticipants(tailorId, clientId, req.user?.id, req.userRole, req.body);
+  const message = await conversationsService.sendMessageByParticipants(tailorId, clientId, req.user?.id, req.userRole, req.body, req.file);
   success(res, message, "Message sent successfully", 201);
 };
 
@@ -58,7 +58,7 @@ export const getMessages: RequestHandler = async (req, res) => {
 };
 
 export const sendMessage: RequestHandler = async (req, res) => {
-  const message = await conversationsService.sendMessage(asString(req.params.conversationId), req.user?.id, req.userRole, req.body);
+  const message = await conversationsService.sendMessage(asString(req.params.conversationId), req.user?.id, req.userRole, req.body, req.file);
   success(res, message, "Message sent successfully", 201);
 };
 

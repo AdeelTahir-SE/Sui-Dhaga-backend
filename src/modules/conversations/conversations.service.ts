@@ -157,25 +157,79 @@ export const conversationsService = {
     };
   },
 
-  async sendMessageByParticipants(tailorId: string, clientId: string, userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>) {
-    if (!userId) throw new AppError("Authentication required", 401);
+  async sendMessageByParticipants(
+    tailorId: string,
+    clientId: string,
+    userId: string | undefined,
+    userRole: string | undefined,
+    data: Record<string, unknown>,
+    file?: Express.Multer.File
+  ) {
+    const senderId = (data.senderId || data.sender_id || userId) as string;
+    if (!senderId) throw new AppError("Authentication required", 401);
 
-    const initialText = (data.text as string) || "Attachment sent";
-    const conversation = await this.getOrCreateConversation(tailorId, clientId, initialText, userId);
+    const initialText = (data.text as string) || (file ? "Attachment sent" : "Hello");
+    const conversation = await this.getOrCreateConversation(tailorId, clientId, initialText, senderId);
 
-    return this.sendMessage(conversation.id, userId, userRole, data);
+    return this.sendMessage(conversation.id, senderId, userRole, data, file);
   },
 
-  async sendMessage(conversationId: string, userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
-    if (!userId) throw new AppError("Authentication required", 401);
+  async sendMessage(
+    conversationId: string,
+    userId: string | undefined,
+    _userRole: string | undefined,
+    data: Record<string, unknown>,
+    file?: Express.Multer.File
+  ) {
+    const senderId = (data.senderId || data.sender_id || userId) as string;
+    if (!senderId) throw new AppError("Authentication required", 401);
+
+    let attachments: string[] = [];
+    if (Array.isArray(data.attachments)) {
+      attachments = [...(data.attachments as string[])];
+    } else if (typeof data.attachments === "string" && data.attachments.trim().length > 0) {
+      try {
+        const parsed = JSON.parse(data.attachments);
+        if (Array.isArray(parsed)) {
+          attachments = parsed;
+        } else {
+          attachments = [data.attachments];
+        }
+      } catch {
+        attachments = [data.attachments];
+      }
+    }
+
+    if (file) {
+      const fileExt = file.originalname?.split(".").pop() || "png";
+      const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
+      const path = `${conversationId}/attach-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
+      const { url } = await storageService.uploadFile("message-attachments", path, file.buffer, file.mimetype);
+      attachments.push(url);
+    }
+
+    const rawText = typeof data.text === "string" ? data.text.trim() : "";
+    const text = rawText || (attachments.length > 0 ? "Attachment sent" : "");
+
+    if (!text && attachments.length === 0) {
+      throw new AppError("Message must contain text or an attachment", 400);
+    }
+
     const client = getDbClient();
     const mapped = toSnakeCase(data);
+    delete mapped.sender_id;
+    delete mapped.senderId;
+    delete mapped.conversation_id;
+    delete mapped.file;
+
     const { data: created, error } = await client
       .from("messages")
       .insert({
         ...mapped,
+        text,
+        attachments,
         conversation_id: conversationId,
-        sender_id: userId,
+        sender_id: senderId,
       })
       .select("*, sender:profiles!sender_id(*)")
       .single();
@@ -185,7 +239,7 @@ export const conversationsService = {
     await client
       .from("conversations")
       .update({
-        last_message: (data.text as string) || "Attachment sent",
+        last_message: text || "Attachment sent",
         last_message_at: new Date().toISOString(),
       })
       .eq("id", conversationId);

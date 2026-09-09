@@ -8,8 +8,12 @@ export const createConversationSchema = z.object({
 });
 
 export const sendMessageSchema = z.object({
-  text: z.string().min(1),
-  attachments: z.array(z.string()).optional(),
+  text: z.string().optional(),
+  attachments: z
+    .union([z.array(z.string()), z.string().transform((val) => [val])])
+    .optional(),
+  senderId: z.string().optional(),
+  sender_id: z.string().optional(),
 });
 
 export const addAttachmentSchema = z.object({

@@ -117,12 +117,24 @@ conversationsRoutes.post("/conversations", requireAuth, validate(createConversat
  *           type: string
  *         description: Client ID (participant 1)
  *     requestBody:
- *       required: true
  *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Attachment file (Image, PDF, Document)
+ *               text:
+ *                 type: string
+ *                 description: Optional message text
+ *               senderId:
+ *                 type: string
+ *                 description: Optional sender ID
  *         application/json:
  *           schema:
  *             type: object
- *             required: [text]
  *             properties:
  *               text:
  *                 type: string
@@ -130,12 +142,14 @@ conversationsRoutes.post("/conversations", requireAuth, validate(createConversat
  *                 type: array
  *                 items:
  *                   type: string
+ *               senderId:
+ *                 type: string
  *     responses:
  *       201:
  *         description: Message sent successfully
  */
 conversationsRoutes.get("/conversations/:tailorId/:clientId/messages", requireAuth, asyncHandler(conversationsController.getMessagesByTailorAndClient));
-conversationsRoutes.post("/conversations/:tailorId/:clientId/messages", requireAuth, validate(sendMessageSchema), asyncHandler(conversationsController.sendMessageByTailorAndClient));
+conversationsRoutes.post("/conversations/:tailorId/:clientId/messages", requireAuth, uploadAnyMedia("file"), validate(sendMessageSchema), asyncHandler(conversationsController.sendMessageByTailorAndClient));
 
 /**
  * @openapi
@@ -205,7 +219,7 @@ conversationsRoutes.get("/conversations/:conversationId", requireAuth, asyncHand
  *       200:
  *         description: Messages retrieved successfully
  *   post:
- *     summary: Send a message in a conversation by conversation ID
+ *     summary: Send a message in a conversation by conversation ID (supports text, file attachments via multipart, or JSON)
  *     tags: [Conversations]
  *     security:
  *       - BearerAuth: []
@@ -216,12 +230,24 @@ conversationsRoutes.get("/conversations/:conversationId", requireAuth, asyncHand
  *         schema:
  *           type: string
  *     requestBody:
- *       required: true
  *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Attachment file (Image, PDF, Document)
+ *               text:
+ *                 type: string
+ *                 description: Optional message text
+ *               senderId:
+ *                 type: string
+ *                 description: Optional sender ID (defaults to authenticated user)
  *         application/json:
  *           schema:
  *             type: object
- *             required: [text]
  *             properties:
  *               text:
  *                 type: string
@@ -229,12 +255,14 @@ conversationsRoutes.get("/conversations/:conversationId", requireAuth, asyncHand
  *                 type: array
  *                 items:
  *                   type: string
+ *               senderId:
+ *                 type: string
  *     responses:
  *       201:
  *         description: Message sent successfully
  */
 conversationsRoutes.get("/conversations/:conversationId/messages", requireAuth, asyncHandler(conversationsController.getMessages));
-conversationsRoutes.post("/conversations/:conversationId/messages", requireAuth, validate(sendMessageSchema), asyncHandler(conversationsController.sendMessage));
+conversationsRoutes.post("/conversations/:conversationId/messages", requireAuth, uploadAnyMedia("file"), validate(sendMessageSchema), asyncHandler(conversationsController.sendMessage));
 
 /**
  * @openapi

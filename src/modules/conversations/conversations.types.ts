@@ -10,8 +10,10 @@ export interface CreateConversationPayload {
 }
 
 export interface SendMessagePayload {
-  text: string;
-  attachments?: string[];
+  text?: string;
+  attachments?: string[] | string;
+  senderId?: string;
+  sender_id?: string;
 }
 
 export interface AddAttachmentPayload {
