@@ -46,7 +46,8 @@ export const getMessagesByTailorAndClient: RequestHandler = async (req, res) => 
 export const sendMessageByTailorAndClient: RequestHandler = async (req, res) => {
   const tailorId = asString(req.params.tailorId);
   const clientId = asString(req.params.clientId);
-  const message = await conversationsService.sendMessageByParticipants(tailorId, clientId, req.user?.id, req.userRole, req.body, req.file);
+  const files = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
+  const message = await conversationsService.sendMessageByParticipants(tailorId, clientId, req.user?.id, req.userRole, req.body, files);
   success(res, message, "Message sent successfully", 201);
 };
 
@@ -58,7 +59,8 @@ export const getMessages: RequestHandler = async (req, res) => {
 };
 
 export const sendMessage: RequestHandler = async (req, res) => {
-  const message = await conversationsService.sendMessage(asString(req.params.conversationId), req.user?.id, req.userRole, req.body, req.file);
+  const files = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
+  const message = await conversationsService.sendMessage(asString(req.params.conversationId), req.user?.id, req.userRole, req.body, files);
   success(res, message, "Message sent successfully", 201);
 };
 
@@ -68,7 +70,8 @@ export const markAsRead: RequestHandler = async (req, res) => {
 };
 
 export const addAttachment: RequestHandler = async (req, res) => {
-  const updated = await conversationsService.addAttachment(asString(req.params.messageId), req.user?.id, req.userRole, req.file, req.body);
+  const files = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
+  const updated = await conversationsService.addAttachment(asString(req.params.messageId), req.user?.id, req.userRole, files, req.body);
   success(res, updated, "Attachment added successfully", 201);
 };
 

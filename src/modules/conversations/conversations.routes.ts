@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validation.middleware.js";
-import { uploadAnyMedia } from "../../middlewares/upload.middleware.js";
+import { uploadChatMedia } from "../../middlewares/upload.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as conversationsController from "./conversations.controller.js";
 import {
@@ -149,7 +149,7 @@ conversationsRoutes.post("/conversations", requireAuth, validate(createConversat
  *         description: Message sent successfully
  */
 conversationsRoutes.get("/conversations/:tailorId/:clientId/messages", requireAuth, asyncHandler(conversationsController.getMessagesByTailorAndClient));
-conversationsRoutes.post("/conversations/:tailorId/:clientId/messages", requireAuth, uploadAnyMedia("file"), validate(sendMessageSchema), asyncHandler(conversationsController.sendMessageByTailorAndClient));
+conversationsRoutes.post("/conversations/:tailorId/:clientId/messages", requireAuth, uploadChatMedia(), validate(sendMessageSchema), asyncHandler(conversationsController.sendMessageByTailorAndClient));
 
 /**
  * @openapi
@@ -262,7 +262,7 @@ conversationsRoutes.get("/conversations/:conversationId", requireAuth, asyncHand
  *         description: Message sent successfully
  */
 conversationsRoutes.get("/conversations/:conversationId/messages", requireAuth, asyncHandler(conversationsController.getMessages));
-conversationsRoutes.post("/conversations/:conversationId/messages", requireAuth, uploadAnyMedia("file"), validate(sendMessageSchema), asyncHandler(conversationsController.sendMessage));
+conversationsRoutes.post("/conversations/:conversationId/messages", requireAuth, uploadChatMedia(), validate(sendMessageSchema), asyncHandler(conversationsController.sendMessage));
 
 /**
  * @openapi
@@ -324,5 +324,5 @@ conversationsRoutes.patch("/messages/:messageId/read", requireAuth, asyncHandler
  *       201:
  *         description: Attachment added successfully
  */
-conversationsRoutes.post("/messages/:messageId/attachments", requireAuth, uploadAnyMedia("file"), validate(addAttachmentSchema), asyncHandler(conversationsController.addAttachment));
+conversationsRoutes.post("/messages/:messageId/attachments", requireAuth, uploadChatMedia(), validate(addAttachmentSchema), asyncHandler(conversationsController.addAttachment));
 

@@ -5,6 +5,29 @@ import {
 import { storageService } from "../../services/storage.service.js";
 import { AppError } from "../../utils/app-error.js";
 
+function getFileExtension(filename?: string, mimetype?: string): string {
+  if (filename && filename.includes(".")) {
+    const ext = filename.split(".").pop()?.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+    if (ext && ext.length >= 2 && ext.length <= 5) return ext;
+  }
+  if (mimetype) {
+    const mime = mimetype.toLowerCase();
+    if (mime.includes("m4a") || mime.includes("aac") || mime.includes("mp4")) return "m4a";
+    if (mime.includes("mpeg") || mime.includes("mp3")) return "mp3";
+    if (mime.includes("wav") || mime.includes("wave")) return "wav";
+    if (mime.includes("webm")) return "webm";
+    if (mime.includes("ogg") || mime.includes("opus")) return "ogg";
+    if (mime.includes("caf")) return "caf";
+    if (mime.includes("3gp") || mime.includes("3gpp")) return "3gp";
+    if (mime.includes("png")) return "png";
+    if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg";
+    if (mime.includes("webp")) return "webp";
+    if (mime.includes("gif")) return "gif";
+    if (mime.includes("pdf")) return "pdf";
+  }
+  return "bin";
+}
+
 export const conversationsService = {
   async getConversations(userId: string | undefined, userRole: string | undefined, page = 1, limit = 20) {
     const client = getDbClient();
@@ -163,15 +186,16 @@ export const conversationsService = {
     userId: string | undefined,
     userRole: string | undefined,
     data: Record<string, unknown>,
-    file?: Express.Multer.File
+    files?: Express.Multer.File[] | Express.Multer.File
   ) {
     const senderId = (data.senderId || data.sender_id || userId) as string;
     if (!senderId) throw new AppError("Authentication required", 401);
 
-    const initialText = (data.text as string) || (file ? "Attachment sent" : "Hello");
+    const hasFiles = Boolean(Array.isArray(files) ? files.length > 0 : files);
+    const initialText = (data.text as string) || (hasFiles ? "Attachment sent" : "Hello");
     const conversation = await this.getOrCreateConversation(tailorId, clientId, initialText, senderId);
 
-    return this.sendMessage(conversation.id, senderId, userRole, data, file);
+    return this.sendMessage(conversation.id, senderId, userRole, data, files);
   },
 
   async sendMessage(
@@ -179,7 +203,7 @@ export const conversationsService = {
     userId: string | undefined,
     _userRole: string | undefined,
     data: Record<string, unknown>,
-    file?: Express.Multer.File
+    files?: Express.Multer.File[] | Express.Multer.File
   ) {
     const senderId = (data.senderId || data.sender_id || userId) as string;
     if (!senderId) throw new AppError("Authentication required", 401);
@@ -200,11 +224,18 @@ export const conversationsService = {
       }
     }
 
-    if (file) {
-      const fileExt = file.originalname?.split(".").pop() || "png";
-      const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
-      const path = `${conversationId}/attach-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
-      const { url } = await storageService.uploadFile("message-attachments", path, file.buffer, file.mimetype);
+    const uploadedFiles: Express.Multer.File[] = Array.isArray(files)
+      ? files
+      : files
+      ? [files]
+      : [];
+
+    for (const file of uploadedFiles) {
+      if (!file || !file.buffer) continue;
+      const cleanExt = getFileExtension(file.originalname, file.mimetype);
+      const path = `${conversationId}/attach-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt}`;
+      const mime = file.mimetype || (cleanExt === "m4a" ? "audio/m4a" : "application/octet-stream");
+      const { url } = await storageService.uploadFile("message-attachments", path, file.buffer, mime);
       attachments.push(url);
     }
 
@@ -216,20 +247,14 @@ export const conversationsService = {
     }
 
     const client = getDbClient();
-    const mapped = toSnakeCase(data);
-    delete mapped.sender_id;
-    delete mapped.senderId;
-    delete mapped.conversation_id;
-    delete mapped.file;
 
     const { data: created, error } = await client
       .from("messages")
       .insert({
-        ...mapped,
-        text,
-        attachments,
         conversation_id: conversationId,
         sender_id: senderId,
+        text,
+        attachments,
       })
       .select("*, sender:profiles!sender_id(*)")
       .single();
@@ -260,17 +285,35 @@ export const conversationsService = {
     return updated;
   },
 
-  async addAttachment(messageId: string, _userId: string | undefined, _userRole: string | undefined, file?: Express.Multer.File, data: Record<string, unknown> = {}) {
-    let fileUrl = (data.fileUrl || data.file_url || data.file) as string;
-    if (file) {
-      const fileExt = file.originalname?.split(".").pop() || "png";
-      const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
-      const path = `${messageId}/attach-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
-      const { url } = await storageService.uploadFile("message-attachments", path, file.buffer, file.mimetype);
-      fileUrl = url;
+  async addAttachment(
+    messageId: string,
+    _userId: string | undefined,
+    _userRole: string | undefined,
+    files?: Express.Multer.File[] | Express.Multer.File,
+    data: Record<string, unknown> = {}
+  ) {
+    const newAttachments: string[] = [];
+
+    if (data.fileUrl || data.file_url) {
+      newAttachments.push(String(data.fileUrl || data.file_url));
     }
 
-    if (!fileUrl) {
+    const uploadedFiles: Express.Multer.File[] = Array.isArray(files)
+      ? files
+      : files
+      ? [files]
+      : [];
+
+    for (const file of uploadedFiles) {
+      if (!file || !file.buffer) continue;
+      const cleanExt = getFileExtension(file.originalname, file.mimetype);
+      const path = `${messageId}/attach-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt}`;
+      const mime = file.mimetype || (cleanExt === "m4a" ? "audio/m4a" : "application/octet-stream");
+      const { url } = await storageService.uploadFile("message-attachments", path, file.buffer, mime);
+      newAttachments.push(url);
+    }
+
+    if (newAttachments.length === 0) {
       throw new AppError("Attachment file or fileUrl is required", 400);
     }
 
@@ -280,7 +323,7 @@ export const conversationsService = {
 
     const { data: updated, error } = await client
       .from("messages")
-      .update({ attachments: [...currentAttachments, fileUrl] })
+      .update({ attachments: [...currentAttachments, ...newAttachments] })
       .eq("id", messageId)
       .select()
       .single();

@@ -14,11 +14,18 @@ export const sendMessageSchema = z.object({
     .optional(),
   senderId: z.string().optional(),
   sender_id: z.string().optional(),
-});
+  file: z.any().optional(),
+  files: z.any().optional(),
+  fileType: z.string().optional(),
+  file_type: z.string().optional(),
+}).passthrough();
 
 export const addAttachmentSchema = z.object({
   fileUrl: z.string().url().optional(),
-  file: z.string().optional(),
+  file_url: z.string().url().optional(),
+  file: z.any().optional(),
+  files: z.any().optional(),
   fileType: z.string().optional(),
-});
+  file_type: z.string().optional(),
+}).passthrough();
 
