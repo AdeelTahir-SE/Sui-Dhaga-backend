@@ -14,15 +14,37 @@ export const ALLOWED_IMAGE_TYPES = [
 ];
 
 export const ALLOWED_DOCUMENT_TYPES = [
+  // Documents
   "application/pdf",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "text/plain",
-];
 
+  // Images
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/svg+xml",
+
+  // Voice & Audio
+  "audio/m4a",
+  "audio/x-m4a",
+  "audio/mp4",
+  "audio/aac",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/wav",
+  "audio/wave",
+  "audio/x-wav",
+  "audio/webm",
+  "audio/ogg",
+  "audio/3gpp",
+  "audio/3gp",
+  "audio/amr",
+  "audio/x-caf",
+  "audio/flac",
+];
 const imageFileFilter: multer.Options["fileFilter"] = (_req, file, cb) => {
   if (ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
     cb(null, true);
