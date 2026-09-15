@@ -12,6 +12,29 @@ export type StorageBucket =
   | "exports"
   | "references";
 
+export async function initializeStorageBuckets() {
+  if (!supabase) return;
+  const publicBuckets: StorageBucket[] = [
+    "avatars",
+    "designs",
+    "tailor-gallery",
+    "tailor-banners",
+    "community-posts",
+    "message-attachments",
+    "exports",
+    "references",
+  ];
+
+  for (const b of publicBuckets) {
+    try {
+      await supabase.storage.createBucket(b, { public: true });
+    } catch {}
+    try {
+      await supabase.storage.updateBucket(b, { public: true });
+    } catch {}
+  }
+}
+
 export const storageService = {
   async uploadFile(bucket: StorageBucket, path: string, fileBuffer: Buffer, mimeType: string) {
     const dataUriFallback = `data:${mimeType || "application/octet-stream"};base64,${fileBuffer.toString("base64")}`;
@@ -21,9 +44,12 @@ export const storageService = {
     }
 
     try {
-      // Ensure bucket exists and is public
+      // Ensure bucket exists and is explicitly marked public
       try {
         await supabase.storage.createBucket(bucket, { public: true });
+      } catch {}
+      try {
+        await supabase.storage.updateBucket(bucket, { public: true });
       } catch {}
 
       let { data, error } = await supabase.storage.from(bucket).upload(path, fileBuffer, {
@@ -35,6 +61,7 @@ export const storageService = {
         // Try to create/update bucket as public and retry upload
         try {
           await supabase.storage.createBucket(bucket, { public: true });
+          await supabase.storage.updateBucket(bucket, { public: true });
         } catch {}
 
         const retry = await supabase.storage.from(bucket).upload(path, fileBuffer, {
@@ -50,6 +77,14 @@ export const storageService = {
       }
 
       if (data?.path) {
+        // Try 10-year signed URL first (accessible regardless of public/private bucket policies)
+        try {
+          const { data: signedData } = await supabase.storage.from(bucket).createSignedUrl(data.path, 60 * 60 * 24 * 365 * 10);
+          if (signedData?.signedUrl) {
+            return { path: data.path, url: signedData.signedUrl };
+          }
+        } catch {}
+
         const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(data.path);
         if (publicUrlData?.publicUrl) {
           return { path: data.path, url: publicUrlData.publicUrl };
