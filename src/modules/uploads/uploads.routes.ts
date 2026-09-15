@@ -141,3 +141,23 @@ uploadsRoutes.post("/uploads/file", requireAuth, uploadDocument("file"), asyncHa
  *         description: File deleted successfully
  */
 uploadsRoutes.delete("/uploads/:fileId", requireAuth, asyncHandler(uploadsController.deleteFile));
+
+/**
+ * @openapi
+ * /media/{bucket}/{filePath}:
+ *   get:
+ *     summary: Stream or download media asset from storage
+ *     tags: [Uploads]
+ *     parameters:
+ *       - in: path
+ *         name: bucket
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Media streamed successfully
+ *       206:
+ *         description: Partial content streamed successfully
+ */
+uploadsRoutes.get("/media/:bucket/*", asyncHandler(uploadsController.streamMedia));
