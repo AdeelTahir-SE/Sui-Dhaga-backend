@@ -26,3 +26,28 @@ export const resetPasswordSchema = z.object({
   token: z.string().optional(),
   email: z.string().email().optional(),
 });
+
+export const googleAuthSchema = z.object({
+  idToken: z.string().optional(),
+  accessToken: z.string().optional(),
+  token: z.string().optional(),
+  email: z.string().email().optional(),
+  name: z.string().optional(),
+  fullName: z.string().optional(),
+  avatar: z.string().optional(),
+  avatarUrl: z.string().optional(),
+  phone: z.string().optional(),
+  googleId: z.string().optional(),
+});
+
+export const completeProfileSchema = z.object({
+  role: z.enum(["customer", "tailor"]),
+  phone: z.string().optional(),
+  name: z.string().optional(),
+  fullName: z.string().optional(),
+  shopName: z.string().optional(),
+  city: z.string().optional(),
+  address: z.string().optional(),
+  specialties: z.array(z.string()).optional(),
+});
+

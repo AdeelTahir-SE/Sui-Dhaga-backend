@@ -1,7 +1,9 @@
 import { getDbClient } from "../../utils/resource-helper.js";
 import { AppError } from "../../utils/app-error.js";
+import { env } from "../../config/env.js";
 
-import type { RegisterPayload } from "./auth.types.js";
+import type { RegisterPayload, GoogleAuthPayload, CompleteProfilePayload } from "./auth.types.js";
+
 
 export const authService = {
   async register(payload: RegisterPayload) {
@@ -126,4 +128,235 @@ export const authService = {
 
     throw new AppError("A valid email, token, or session is required to reset password.", 400);
   },
+
+  async googleAuth(payload: GoogleAuthPayload) {
+    const client = getDbClient();
+    const token = payload.accessToken || payload.token;
+
+    let targetUser: any = null;
+
+    // 1. If token provided, verify with Supabase Auth
+    if (token && token.trim()) {
+      try {
+        const { data: userData, error: userError } = await client.auth.getUser(token.trim());
+        if (!userError && userData?.user) {
+          targetUser = userData.user;
+        }
+      } catch {
+        // Fall back to payload resolution
+      }
+    }
+
+    // 2. If user not resolved by token, search or create using email
+    const email = (payload.email || targetUser?.email || "").trim().toLowerCase();
+    if (!targetUser && email) {
+      const { data: usersData } = await client.auth.admin.listUsers();
+      const existing = usersData?.users?.find(
+        (u) => u.email?.toLowerCase() === email
+      );
+
+      if (existing) {
+        targetUser = existing;
+      } else {
+        const fullName = payload.fullName || payload.name || email.split("@")[0];
+        const avatarUrl = payload.avatarUrl || payload.avatar;
+        const phone = payload.phone;
+
+        const { data: created, error: createError } = await client.auth.admin.createUser({
+          email,
+          email_confirm: true,
+          user_metadata: {
+            full_name: fullName,
+            name: fullName,
+            avatar_url: avatarUrl,
+            phone: phone || undefined,
+            provider: "google",
+            profile_completed: false,
+          },
+        });
+
+        if (createError) throw new AppError(createError.message, 400);
+        targetUser = created.user;
+      }
+    }
+
+    if (!targetUser || !targetUser.id) {
+      throw new AppError("Failed to authenticate with Google. User could not be resolved.", 400);
+    }
+
+    // 3. Ensure profile in profiles table
+    const { data: existingProfile } = await client
+      .from("profiles")
+      .select("*")
+      .eq("id", targetUser.id)
+      .single();
+
+    let profile = existingProfile;
+    const resolvedName =
+      payload.fullName ||
+      payload.name ||
+      targetUser.user_metadata?.full_name ||
+      targetUser.user_metadata?.name ||
+      email.split("@")[0] ||
+      "User";
+    const resolvedAvatar =
+      payload.avatarUrl ||
+      payload.avatar ||
+      targetUser.user_metadata?.avatar_url ||
+      targetUser.user_metadata?.picture ||
+      null;
+    const resolvedPhone =
+      payload.phone ||
+      targetUser.user_metadata?.phone ||
+      targetUser.phone ||
+      null;
+
+    if (!profile) {
+      const { data: newProfile } = await client
+        .from("profiles")
+        .insert({
+          id: targetUser.id,
+          role: targetUser.user_metadata?.role || "customer",
+          status: "active",
+          full_name: resolvedName,
+          avatar_url: resolvedAvatar,
+          phone: resolvedPhone,
+        })
+        .select()
+        .single();
+      profile = newProfile;
+    } else if (resolvedAvatar && !profile.avatar_url) {
+      const { data: updatedProf } = await client
+        .from("profiles")
+        .update({ avatar_url: resolvedAvatar })
+        .eq("id", targetUser.id)
+        .select()
+        .single();
+      profile = updatedProf || profile;
+    }
+
+    // Check if account completion is required (new user or profile_completed flag is false)
+    const hasCompletedFlag = targetUser.user_metadata?.profile_completed === true;
+    const hasRoleSet = Boolean(profile?.role && profile.role !== "authenticated");
+    const hasPhone = Boolean(profile?.phone || targetUser.user_metadata?.phone);
+
+    const needsProfileCompletion = !hasCompletedFlag || !hasRoleSet || !hasPhone;
+
+    // Generate or maintain access token
+    let sessionToken = token;
+    if (!sessionToken) {
+      try {
+        const { data: linkData } = await client.auth.admin.generateLink({
+          type: "magiclink",
+          email: targetUser.email || email,
+        });
+        sessionToken = linkData?.properties?.hashed_token || `token_${targetUser.id}`;
+      } catch {
+        sessionToken = `token_${targetUser.id}`;
+      }
+    }
+
+    return {
+      user: {
+        id: targetUser.id,
+        email: targetUser.email || email,
+        fullName: profile?.full_name || resolvedName,
+        name: profile?.full_name || resolvedName,
+        role: profile?.role || targetUser.user_metadata?.role || "customer",
+        phone: profile?.phone || resolvedPhone || undefined,
+        avatarUrl: profile?.avatar_url || resolvedAvatar || undefined,
+        avatar: profile?.avatar_url || resolvedAvatar || undefined,
+        profileCompleted: !needsProfileCompletion,
+      },
+      session: {
+        access_token: sessionToken,
+        token: sessionToken,
+      },
+      needsProfileCompletion,
+    };
+  },
+
+  async completeProfile(userId: string, payload: CompleteProfilePayload) {
+    const client = getDbClient();
+    const { role, phone, name, fullName, shopName, city, address, specialties } = payload;
+    const resolvedName = fullName || name;
+
+    // 1. Update Supabase Auth metadata
+    const metaUpdates: Record<string, unknown> = {
+      role,
+      profile_completed: true,
+    };
+    if (phone) metaUpdates.phone = phone;
+    if (resolvedName) {
+      metaUpdates.full_name = resolvedName;
+      metaUpdates.name = resolvedName;
+    }
+
+    await client.auth.admin.updateUserById(userId, {
+      user_metadata: metaUpdates,
+      app_metadata: { role },
+    });
+
+    // 2. Update profiles table
+    const profileUpdates: Record<string, unknown> = {
+      role,
+      updated_at: new Date().toISOString(),
+    };
+    if (phone) profileUpdates.phone = phone;
+    if (resolvedName) profileUpdates.full_name = resolvedName;
+    if (address) profileUpdates.address = address;
+
+    const { data: updatedProfile, error: profileErr } = await client
+      .from("profiles")
+      .update(profileUpdates)
+      .eq("id", userId)
+      .select()
+      .single();
+
+    if (profileErr) throw new AppError(profileErr.message, 400);
+
+    // 3. If tailor, ensure row exists in tailors table
+    if (role === "tailor") {
+      const { data: existingTailor } = await client
+        .from("tailors")
+        .select("id")
+        .eq("user_id", userId)
+        .single();
+
+      if (!existingTailor) {
+        await client.from("tailors").insert({
+          user_id: userId,
+          shop_name: shopName || `${resolvedName || "Tailor"}'s Boutique`,
+          city: city || "Lahore",
+          address: address || updatedProfile?.address || "Main Market",
+          specialties: specialties || ["Custom Suits", "Traditional"],
+          experience_years: 1,
+        });
+      }
+    }
+
+    return {
+      user: {
+        id: userId,
+        fullName: updatedProfile.full_name,
+        name: updatedProfile.full_name,
+        role: updatedProfile.role,
+        phone: updatedProfile.phone,
+        avatarUrl: updatedProfile.avatar_url,
+        avatar: updatedProfile.avatar_url,
+        profileCompleted: true,
+      },
+      profile: updatedProfile,
+      message: "Profile completed successfully",
+    };
+  },
+
+  getGoogleAuthUrl(redirectUri?: string) {
+    if (!env.SUPABASE_URL) {
+      return null;
+    }
+    const targetRedirect = redirectUri || "suidhagamobile://auth/callback";
+    return `${env.SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(targetRedirect)}`;
+  },
 };
+

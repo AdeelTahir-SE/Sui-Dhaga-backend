@@ -24,3 +24,28 @@ export interface ForgotPasswordPayload {
 export interface ResetPasswordPayload {
   password: string;
 }
+
+export interface GoogleAuthPayload {
+  idToken?: string;
+  accessToken?: string;
+  token?: string;
+  email?: string;
+  name?: string;
+  fullName?: string;
+  avatar?: string;
+  avatarUrl?: string;
+  phone?: string;
+  googleId?: string;
+}
+
+export interface CompleteProfilePayload {
+  role: "customer" | "tailor";
+  phone?: string;
+  name?: string;
+  fullName?: string;
+  shopName?: string;
+  city?: string;
+  address?: string;
+  specialties?: string[];
+}
+

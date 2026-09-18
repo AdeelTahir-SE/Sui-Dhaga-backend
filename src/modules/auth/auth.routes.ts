@@ -10,7 +10,10 @@ import {
   refreshTokenSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  googleAuthSchema,
+  completeProfileSchema,
 } from "./auth.validator.js";
+
 
 export const authRoutes = Router();
 
@@ -167,4 +170,75 @@ authRoutes.post("/reset-password", optionalAuth, authLimiter, validate(resetPass
  *         description: Email verification status confirmation
  */
 authRoutes.post("/verify-email", requireAuth, asyncHandler(authController.verifyEmail));
+
+/**
+ * @swagger
+ * /auth/google:
+ *   post:
+ *     summary: Authenticate via Google OAuth or token
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               accessToken: { type: string }
+ *               token: { type: string }
+ *               email: { type: string, format: email }
+ *               name: { type: string }
+ *               avatar: { type: string }
+ *               phone: { type: string }
+ *     responses:
+ *       200:
+ *         description: Google authentication successful
+ */
+authRoutes.post("/google", authLimiter, validate(googleAuthSchema), asyncHandler(authController.googleAuth));
+
+/**
+ * @swagger
+ * /auth/google-url:
+ *   get:
+ *     summary: Get Google OAuth initiation URL
+ *     tags: [Auth]
+ *     security: []
+ *     parameters:
+ *       - in: query
+ *         name: redirectUri
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Google OAuth URL returned
+ */
+authRoutes.get("/google-url", asyncHandler(authController.getGoogleAuthUrl));
+
+/**
+ * @swagger
+ * /auth/complete-profile:
+ *   post:
+ *     summary: Complete user profile (select role and phone number)
+ *     tags: [Auth]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [role]
+ *             properties:
+ *               role: { type: string, enum: [customer, tailor] }
+ *               phone: { type: string }
+ *               name: { type: string }
+ *               shopName: { type: string }
+ *               city: { type: string }
+ *               address: { type: string }
+ *     responses:
+ *       200:
+ *         description: Profile completed successfully
+ */
+authRoutes.post("/complete-profile", requireAuth, validate(completeProfileSchema), asyncHandler(authController.completeProfile));
+
 

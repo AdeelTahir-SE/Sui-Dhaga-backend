@@ -45,3 +45,21 @@ export const resetPassword: RequestHandler = async (req, res) => {
 export const verifyEmail: RequestHandler = (_req, res) => {
   success(res, null, "Email verification status fetched");
 };
+
+export const googleAuth: RequestHandler = async (req, res) => {
+  const result = await authService.googleAuth(req.body);
+  success(res, result, "Google authentication successful");
+};
+
+export const completeProfile: RequestHandler = async (req, res) => {
+  const userId = req.user?.id;
+  const result = await authService.completeProfile(userId!, req.body);
+  success(res, result, "Profile completed successfully");
+};
+
+export const getGoogleAuthUrl: RequestHandler = (req, res) => {
+  const redirectUri = typeof req.query.redirectUri === "string" ? req.query.redirectUri : undefined;
+  const url = authService.getGoogleAuthUrl(redirectUri);
+  success(res, { url }, "Google auth URL fetched");
+};
+
