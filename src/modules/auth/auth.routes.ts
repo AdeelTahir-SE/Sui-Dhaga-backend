@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth } from "../../middlewares/auth.middleware.js";
+import { requireAuth, optionalAuth } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validation.middleware.js";
 import { authLimiter } from "../../middlewares/rate-limit.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
@@ -153,7 +153,7 @@ authRoutes.post("/forgot-password", authLimiter, validate(forgotPasswordSchema),
  *       200:
  *         description: Password successfully updated
  */
-authRoutes.post("/reset-password", requireAuth, authLimiter, validate(resetPasswordSchema), asyncHandler(authController.resetPassword));
+authRoutes.post("/reset-password", optionalAuth, authLimiter, validate(resetPasswordSchema), asyncHandler(authController.resetPassword));
 
 /**
  * @swagger

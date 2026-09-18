@@ -36,7 +36,9 @@ export const forgotPassword: RequestHandler = async (req, res) => {
 };
 
 export const resetPassword: RequestHandler = async (req, res) => {
-  const message = await authService.resetPassword(req.body.password);
+  const userId = req.user?.id;
+  const { password, token, email } = req.body;
+  const message = await authService.resetPassword({ password, userId, token, email });
   success(res, null, message);
 };
 

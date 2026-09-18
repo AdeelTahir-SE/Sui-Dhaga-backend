@@ -12,3 +12,19 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
   req.userRole = data.user.app_metadata.role ?? data.user.user_metadata.role ?? "customer";
   next();
 };
+
+export const optionalAuth: RequestHandler = async (req, _res, next) => {
+  const token = req.header("authorization")?.replace(/^Bearer\s+/i, "");
+  if (token && supabase) {
+    try {
+      const { data } = await supabase.auth.getUser(token);
+      if (data?.user) {
+        req.user = data.user;
+        req.userRole = data.user.app_metadata?.role ?? data.user.user_metadata?.role ?? "customer";
+      }
+    } catch {
+      // Ignore invalid optional tokens
+    }
+  }
+  next();
+};
