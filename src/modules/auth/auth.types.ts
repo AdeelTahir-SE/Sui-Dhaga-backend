@@ -26,6 +26,7 @@ export interface ResetPasswordPayload {
 }
 
 export interface GoogleAuthPayload {
+  code?: string;
   idToken?: string;
   accessToken?: string;
   token?: string;

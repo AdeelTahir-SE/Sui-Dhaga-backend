@@ -63,3 +63,11 @@ export const getGoogleAuthUrl: RequestHandler = (req, res) => {
   success(res, { url }, "Google auth URL fetched");
 };
 
+export const googleCallback: RequestHandler = (req, res) => {
+  const appRedirect = typeof req.query.appRedirect === "string" ? req.query.appRedirect : undefined;
+  const html = authService.renderGoogleCallbackHtml(appRedirect);
+  res.setHeader("Content-Type", "text/html");
+  res.send(html);
+};
+
+

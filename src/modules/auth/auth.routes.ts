@@ -216,6 +216,23 @@ authRoutes.get("/google-url", asyncHandler(authController.getGoogleAuthUrl));
 
 /**
  * @swagger
+ * /auth/google/callback:
+ *   get:
+ *     summary: Google OAuth callback bridge for mobile and web deep linking
+ *     tags: [Auth]
+ *     security: []
+ *     parameters:
+ *       - in: query
+ *         name: appRedirect
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: HTML bridge that deep links tokens back to mobile app
+ */
+authRoutes.get("/google/callback", authController.googleCallback);
+
+/**
+ * @swagger
  * /auth/complete-profile:
  *   post:
  *     summary: Complete user profile (select role and phone number)

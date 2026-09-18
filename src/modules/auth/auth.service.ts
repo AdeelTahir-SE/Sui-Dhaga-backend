@@ -131,12 +131,27 @@ export const authService = {
 
   async googleAuth(payload: GoogleAuthPayload) {
     const client = getDbClient();
-    const token = payload.accessToken || payload.token;
+    let token = payload.accessToken || payload.token;
 
     let targetUser: any = null;
 
+    // 0. If PKCE authorization code provided, exchange it for session
+    if (payload.code && payload.code.trim()) {
+      try {
+        const { data: codeData, error: codeError } = await client.auth.exchangeCodeForSession(payload.code.trim());
+        if (!codeError && codeData?.user) {
+          targetUser = codeData.user;
+          if (codeData.session?.access_token) {
+            token = codeData.session.access_token;
+          }
+        }
+      } catch (codeErr) {
+        console.warn("Notice: Code exchange error in Supabase:", codeErr);
+      }
+    }
+
     // 1. If token provided, verify with Supabase Auth
-    if (token && token.trim()) {
+    if (!targetUser && token && token.trim()) {
       try {
         const { data: userData, error: userError } = await client.auth.getUser(token.trim());
         if (!userError && userData?.user) {
@@ -357,6 +372,114 @@ export const authService = {
     }
     const targetRedirect = redirectUri || "suidhagamobile://auth/callback";
     return `${env.SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(targetRedirect)}`;
+  },
+
+  renderGoogleCallbackHtml(appRedirect?: string) {
+    const defaultScheme = "suidhagamobile://auth/callback";
+    const target = appRedirect || defaultScheme;
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sui Dhaga - Authenticating</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #FAF8F5;
+      color: #1A1D1F;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .card {
+      background: #FFFFFF;
+      border: 1px solid #E5E7EB;
+      border-radius: 16px;
+      padding: 32px 24px;
+      max-width: 380px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+    }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 4px solid #F3F4F6;
+      border-top: 4px solid #1A847B;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    h2 { font-size: 20px; font-weight: 700; color: #111827; margin-bottom: 8px; }
+    p { font-size: 14px; color: #6B7280; line-height: 1.5; margin-bottom: 24px; }
+    .btn {
+      display: inline-block;
+      width: 100%;
+      background: #1A847B;
+      color: #FFFFFF;
+      font-weight: 600;
+      font-size: 15px;
+      padding: 13px 20px;
+      border-radius: 10px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #13665F; }
+    #manualSection { display: none; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner" id="spinner"></div>
+    <h2>Redirecting to Sui Dhaga...</h2>
+    <p>Please wait while we complete your Google sign in.</p>
+    <div id="manualSection">
+      <a id="deepLinkBtn" class="btn" href="#">Open Sui Dhaga App</a>
+    </div>
+  </div>
+  <script>
+    (function() {
+      var hash = window.location.hash.substring(1);
+      var hashParams = new URLSearchParams(hash);
+      var queryParams = new URLSearchParams(window.location.search);
+
+      var accessToken = hashParams.get('access_token') || queryParams.get('access_token');
+      var refreshToken = hashParams.get('refresh_token') || queryParams.get('refresh_token');
+      var code = queryParams.get('code') || hashParams.get('code');
+      var error = queryParams.get('error_description') || queryParams.get('error') || hashParams.get('error_description') || hashParams.get('error');
+
+      var targetBase = queryParams.get('appRedirect') || ${JSON.stringify(target)};
+
+      var sep = targetBase.indexOf('?') === -1 ? '?' : '&';
+      var params = [];
+      if (accessToken) params.push('access_token=' + encodeURIComponent(accessToken));
+      if (refreshToken) params.push('refresh_token=' + encodeURIComponent(refreshToken));
+      if (code) params.push('code=' + encodeURIComponent(code));
+      if (error) params.push('error=' + encodeURIComponent(error));
+
+      var finalUrl = targetBase + (params.length > 0 ? sep + params.join('&') : '');
+
+      var btn = document.getElementById('deepLinkBtn');
+      if (btn) btn.href = finalUrl;
+
+      try {
+        window.location.href = finalUrl;
+      } catch (e) {}
+
+      setTimeout(function() {
+        var manual = document.getElementById('manualSection');
+        if (manual) manual.style.display = 'block';
+      }, 1200);
+    })();
+  </script>
+</body>
+</html>`;
   },
 };
 

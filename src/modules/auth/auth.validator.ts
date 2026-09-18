@@ -28,6 +28,7 @@ export const resetPasswordSchema = z.object({
 });
 
 export const googleAuthSchema = z.object({
+  code: z.string().optional(),
   idToken: z.string().optional(),
   accessToken: z.string().optional(),
   token: z.string().optional(),
