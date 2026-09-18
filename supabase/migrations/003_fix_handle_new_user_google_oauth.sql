@@ -1,4 +1,4 @@
-﻿-- Fix handle_new_user trigger function for Google OAuth & external providers
+-- Fix handle_new_user trigger function for Google OAuth & external providers
 -- Supabase PostgreSQL Migration: 003_fix_handle_new_user_google_oauth.sql
 
 -- Replace handle_new_user() with robust metadata parsing, enum validation, picture fallback, and duplicate key protection
