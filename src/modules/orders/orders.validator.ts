@@ -2,11 +2,24 @@ import { z } from "zod";
 
 export const createOrderSchema = z.object({
   tailorId: z.string().min(1),
-  serviceId: z.string().min(1),
+  serviceId: z.string().optional(),
   designId: z.string().optional(),
   measurementId: z.string().optional(),
+  measurementsId: z.string().optional(),
+  itemName: z.string().optional(),
+  item_name: z.string().optional(),
+  measurements: z.record(z.unknown()).optional(),
+  designImages: z.array(z.string()).optional(),
+  design_images: z.array(z.string()).optional(),
   notes: z.string().optional(),
-  amount: z.number().positive().optional(),
+  additionalNotes: z.string().optional(),
+  additional_notes: z.string().optional(),
+  totalAmount: z.number().nonnegative().optional(),
+  total_amount: z.number().nonnegative().optional(),
+  amount: z.number().nonnegative().optional(),
+  price: z.number().nonnegative().optional(),
+  deliveryDate: z.string().optional(),
+  delivery_date: z.string().optional(),
 });
 
 export const updateOrderStatusSchema = z.object({

@@ -55,6 +55,7 @@ const orderAuth = [requireAuth, requireRole("customer", "tailor", "admin")];
  *         description: Order created successfully
  */
 ordersRoutes.get("/orders", ...orderAuth, asyncHandler(ordersController.getOrders));
+ordersRoutes.get("/orders/my", ...orderAuth, asyncHandler(ordersController.getOrders));
 ordersRoutes.post("/orders", requireAuth, requireRole("customer", "admin"), validate(createOrderSchema), asyncHandler(ordersController.createOrder));
 
 /**

@@ -157,41 +157,81 @@ export const authService = {
         if (!userError && userData?.user) {
           targetUser = userData.user;
         }
-      } catch {
-        // Fall back to payload resolution
+      } catch (tokenErr) {
+        console.warn("Notice: Token verification error in Supabase:", tokenErr);
       }
     }
 
     // 2. If user not resolved by token, search or create using email
     const email = (payload.email || targetUser?.email || "").trim().toLowerCase();
     if (!targetUser && email) {
-      const { data: usersData } = await client.auth.admin.listUsers();
-      const existing = usersData?.users?.find(
-        (u) => u.email?.toLowerCase() === email
-      );
+      try {
+        const { data: usersData } = await client.auth.admin.listUsers({ perPage: 1000 });
+        const existing = usersData?.users?.find(
+          (u) => u.email?.toLowerCase() === email
+        );
+        if (existing) {
+          targetUser = existing;
+        }
+      } catch (listErr) {
+        console.warn("Notice: listUsers error:", listErr);
+      }
 
-      if (existing) {
-        targetUser = existing;
-      } else {
+      if (!targetUser) {
         const fullName = payload.fullName || payload.name || email.split("@")[0];
         const avatarUrl = payload.avatarUrl || payload.avatar;
         const phone = payload.phone;
 
-        const { data: created, error: createError } = await client.auth.admin.createUser({
-          email,
-          email_confirm: true,
-          user_metadata: {
-            full_name: fullName,
-            name: fullName,
-            avatar_url: avatarUrl,
-            phone: phone || undefined,
-            provider: "google",
-            profile_completed: false,
-          },
-        });
+        try {
+          const { data: created, error: createError } = await client.auth.admin.createUser({
+            email,
+            email_confirm: true,
+            user_metadata: {
+              full_name: fullName,
+              name: fullName,
+              avatar_url: avatarUrl,
+              phone: phone || undefined,
+              provider: "google",
+              profile_completed: false,
+            },
+          });
 
-        if (createError) throw new AppError(createError.message, 400);
-        targetUser = created.user;
+          if (created?.user) {
+            targetUser = created.user;
+          } else if (createError) {
+            // If user already exists in auth.users, search again
+            const { data: allUsers } = await client.auth.admin.listUsers({ perPage: 1000 });
+            targetUser = allUsers?.users?.find((u) => u.email?.toLowerCase() === email);
+
+            if (!targetUser) {
+              // Check profiles table for an existing user id
+              const { data: prof } = await client
+                .from("profiles")
+                .select("id")
+                .eq("phone", phone || "")
+                .maybeSingle();
+              if (prof?.id) {
+                const { data: uData } = await client.auth.admin.getUserById(prof.id);
+                targetUser = uData?.user;
+              }
+            }
+
+            if (!targetUser) {
+              throw new AppError(createError.message || "Failed to create Google user account", 400);
+            }
+          }
+        } catch (createErr: any) {
+          if (createErr instanceof AppError) throw createErr;
+          console.warn("Notice: createUser exception:", createErr);
+          // Try to recover existing user
+          try {
+            const { data: allUsers } = await client.auth.admin.listUsers({ perPage: 1000 });
+            targetUser = allUsers?.users?.find((u) => u.email?.toLowerCase() === email);
+          } catch {}
+          if (!targetUser) {
+            throw new AppError(createErr?.message || "Failed to authenticate Google user", 400);
+          }
+        }
       }
     }
 
@@ -199,14 +239,19 @@ export const authService = {
       throw new AppError("Failed to authenticate with Google. User could not be resolved.", 400);
     }
 
-    // 3. Ensure profile in profiles table
-    const { data: existingProfile } = await client
-      .from("profiles")
-      .select("*")
-      .eq("id", targetUser.id)
-      .single();
+    // 3. Ensure profile in profiles table with upsert to prevent unique constraint conflicts
+    let profile: any = null;
+    try {
+      const { data: existingProfile } = await client
+        .from("profiles")
+        .select("*")
+        .eq("id", targetUser.id)
+        .maybeSingle();
+      profile = existingProfile;
+    } catch (profErr) {
+      console.warn("Notice: Error fetching existing profile:", profErr);
+    }
 
-    let profile = existingProfile;
     const resolvedName =
       payload.fullName ||
       payload.name ||
@@ -227,26 +272,35 @@ export const authService = {
       null;
 
     if (!profile) {
-      const { data: newProfile } = await client
+      const { data: upsertedProfile } = await client
         .from("profiles")
-        .insert({
-          id: targetUser.id,
-          role: targetUser.user_metadata?.role || "customer",
-          status: "active",
-          full_name: resolvedName,
-          avatar_url: resolvedAvatar,
-          phone: resolvedPhone,
-        })
+        .upsert(
+          {
+            id: targetUser.id,
+            role: targetUser.user_metadata?.role || "customer",
+            status: "active",
+            full_name: resolvedName,
+            avatar_url: resolvedAvatar,
+            phone: resolvedPhone,
+          },
+          { onConflict: "id" }
+        )
         .select()
-        .single();
-      profile = newProfile;
+        .maybeSingle();
+      profile = upsertedProfile || {
+        id: targetUser.id,
+        role: targetUser.user_metadata?.role || "customer",
+        full_name: resolvedName,
+        avatar_url: resolvedAvatar,
+        phone: resolvedPhone,
+      };
     } else if (resolvedAvatar && !profile.avatar_url) {
       const { data: updatedProf } = await client
         .from("profiles")
         .update({ avatar_url: resolvedAvatar })
         .eq("id", targetUser.id)
         .select()
-        .single();
+        .maybeSingle();
       profile = updatedProf || profile;
     }
 

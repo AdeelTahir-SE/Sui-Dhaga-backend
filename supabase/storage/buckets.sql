@@ -9,3 +9,4 @@ INSERT INTO storage.buckets (id, name, public) VALUES ('verification-documents',
 INSERT INTO storage.buckets (id, name, public) VALUES ('message-attachments', 'message-attachments', true) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('exports', 'exports', true) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('references', 'references', true) ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) VALUES ('order-designs', 'order-designs', true) ON CONFLICT (id) DO NOTHING;

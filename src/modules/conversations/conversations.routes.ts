@@ -63,6 +63,7 @@ export const conversationsRoutes = Router();
  */
 conversationsRoutes.get("/conversations", requireAuth, asyncHandler(conversationsController.getConversations));
 conversationsRoutes.post("/conversations", requireAuth, validate(createConversationSchema), asyncHandler(conversationsController.createConversation));
+conversationsRoutes.get("/conversations/realtime-config", requireAuth, asyncHandler(conversationsController.getRealtimeConfig));
 
 /**
  * @openapi

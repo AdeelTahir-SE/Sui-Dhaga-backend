@@ -170,6 +170,13 @@ app.get("/api-docs", (_req, res) => {
 });
 
 import { apiLimiter } from "./middlewares/rate-limit.middleware.js";
+import * as authController from "./modules/auth/auth.controller.js";
+
+// Google OAuth callback bridge routes (accessible at root and /api/v1 without rate-limiting)
+app.get(
+  ["/auth/google/callback", "/auth/callback", "/api/v1/auth/google/callback", "/api/v1/auth/callback"],
+  authController.googleCallback
+);
 
 // API Routes with Rate Limiting
 app.use("/api/v1", apiLimiter, apiRoutes);

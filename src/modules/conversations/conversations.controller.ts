@@ -39,8 +39,21 @@ export const getMessagesByTailorAndClient: RequestHandler = async (req, res) => 
   const clientId = asString(req.params.clientId);
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-  const result = await conversationsService.getMessagesByParticipants(tailorId, clientId, req.user?.id, req.userRole, page, limit);
-  paginated(res, result.records, page, limit, result.total, "Messages fetched successfully");
+  const before = req.query.before ? String(req.query.before) : undefined;
+  const order = req.query.order ? String(req.query.order) : undefined;
+  const result = await conversationsService.getMessagesByParticipants(tailorId, clientId, req.user?.id, req.userRole, page, limit, before, order);
+  res.status(200).json({
+    success: true,
+    message: "Messages fetched successfully",
+    data: result.records,
+    pagination: {
+      page,
+      limit,
+      total: result.total,
+      hasMore: result.hasMore,
+      totalPages: Math.ceil(result.total / limit),
+    },
+  });
 };
 
 export const sendMessageByTailorAndClient: RequestHandler = async (req, res) => {
@@ -54,8 +67,21 @@ export const sendMessageByTailorAndClient: RequestHandler = async (req, res) => 
 export const getMessages: RequestHandler = async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-  const result = await conversationsService.getMessages(asString(req.params.conversationId), req.user?.id, req.userRole, page, limit);
-  paginated(res, result.records, page, limit, result.total, "Messages fetched successfully");
+  const before = req.query.before ? String(req.query.before) : undefined;
+  const order = req.query.order ? String(req.query.order) : undefined;
+  const result = await conversationsService.getMessages(asString(req.params.conversationId), req.user?.id, req.userRole, page, limit, before, order);
+  res.status(200).json({
+    success: true,
+    message: "Messages fetched successfully",
+    data: result.records,
+    pagination: {
+      page,
+      limit,
+      total: result.total,
+      hasMore: result.hasMore,
+      totalPages: Math.ceil(result.total / limit),
+    },
+  });
 };
 
 export const sendMessage: RequestHandler = async (req, res) => {
@@ -73,5 +99,10 @@ export const addAttachment: RequestHandler = async (req, res) => {
   const files = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
   const updated = await conversationsService.addAttachment(asString(req.params.messageId), req.user?.id, req.userRole, files, req.body);
   success(res, updated, "Attachment added successfully", 201);
+};
+
+export const getRealtimeConfig: RequestHandler = async (_req, res) => {
+  const config = conversationsService.getRealtimeConfig();
+  success(res, config, "Realtime configuration fetched successfully");
 };
 

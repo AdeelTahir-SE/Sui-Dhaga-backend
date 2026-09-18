@@ -4,6 +4,7 @@ import {
 } from "../../utils/resource-helper.js";
 import { storageService } from "../../services/storage.service.js";
 import { AppError } from "../../utils/app-error.js";
+import { env } from "../../config/env.js";
 
 function getFileExtension(filename?: string, mimetype?: string): string {
   if (filename && filename.includes(".")) {
@@ -139,7 +140,16 @@ export const conversationsService = {
     return this.getOrCreateConversation(tailorId, clientId, initialMessage, userId);
   },
 
-  async getMessagesByParticipants(tailorId: string, clientId: string, userId: string | undefined, userRole: string | undefined, page = 1, limit = 50) {
+  async getMessagesByParticipants(
+    tailorId: string,
+    clientId: string,
+    userId: string | undefined,
+    userRole: string | undefined,
+    page = 1,
+    limit = 20,
+    before?: string,
+    order?: string,
+  ) {
     const conversation = await this.getConversationByParticipants(tailorId, clientId, userId, userRole);
 
     if (!conversation) {
@@ -150,32 +160,74 @@ export const conversationsService = {
         page: p,
         limit: l,
         total: 0,
+        hasMore: false,
         singleRecord: null,
       };
     }
 
-    return this.getMessages(conversation.id, userId, userRole, page, limit);
+    return this.getMessages(conversation.id, userId, userRole, page, limit, before, order);
   },
 
-  async getMessages(conversationId: string, _userId: string | undefined, _userRole: string | undefined, page = 1, limit = 50) {
+  async getMessages(
+    conversationId: string,
+    _userId: string | undefined,
+    _userRole: string | undefined,
+    page = 1,
+    limit = 20,
+    before?: string,
+    order?: string,
+  ) {
     const client = getDbClient();
     const p = Math.max(1, page);
     const l = Math.min(100, Math.max(1, limit));
 
-    const { data, error, count } = await client
+    let query = client
       .from("messages")
       .select("*, sender:profiles!sender_id(*)", { count: "exact" })
-      .eq("conversation_id", conversationId)
-      .order("created_at", { ascending: true })
-      .range((p - 1) * l, p * l - 1);
+      .eq("conversation_id", conversationId);
+
+    let isReversed = false;
+
+    if (before) {
+      // Cursor-based pagination: fetch messages older than `before` timestamp
+      query = query
+        .lt("created_at", before)
+        .order("created_at", { ascending: false })
+        .limit(l);
+      isReversed = true;
+    } else if (order === "asc") {
+      // Ascending offset pagination
+      query = query
+        .order("created_at", { ascending: true })
+        .range((p - 1) * l, p * l - 1);
+    } else {
+      // Default: fetch the latest `l` messages (descending), then reverse them for chronological view
+      query = query
+        .order("created_at", { ascending: false })
+        .range((p - 1) * l, p * l - 1);
+      isReversed = true;
+    }
+
+    const { data, error, count } = await query;
 
     if (error) throw new AppError(error.message, 400);
 
+    const records = data ? [...data] : [];
+    if (isReversed) {
+      records.reverse(); // Chronological: oldest first, latest last
+    }
+
+    const total = count ?? 0;
+    const hasMore = before
+      ? records.length === l
+      : (p * l) < total;
+
     return {
-      records: data ?? [],
+      records,
       page: p,
       limit: l,
-      total: count ?? 0,
+      total,
+      hasMore,
       singleRecord: null,
     };
   },
@@ -330,6 +382,13 @@ export const conversationsService = {
 
     if (error) throw new AppError(error.message, 400);
     return updated;
+  },
+
+  getRealtimeConfig() {
+    return {
+      supabaseUrl: env.SUPABASE_URL || "",
+      supabaseAnonKey: env.SUPABASE_ANON_KEY || "",
+    };
   },
 };
 

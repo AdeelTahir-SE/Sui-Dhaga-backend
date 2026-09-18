@@ -240,6 +240,11 @@ create table if not exists public.orders (
   service_id uuid references public.tailor_services(id) on delete set null,
   design_id uuid references public.designs(id) on delete set null,
   measurement_id uuid references public.measurements(id) on delete set null,
+  item_name text,
+  measurements jsonb not null default '{}'::jsonb,
+  design_images text[] not null default '{}',
+  additional_notes text,
+  delivery_date text,
   total_amount numeric(10,2) not null default 0.00,
   notes text,
   status public.order_status not null default 'pending',
@@ -500,18 +505,74 @@ create trigger tr_community_posts_updated_at before update on public.community_p
 drop trigger if exists tr_community_comments_updated_at on public.community_comments;
 create trigger tr_community_comments_updated_at before update on public.community_comments for each row execute procedure public.update_updated_at_column();
 
--- Function & Trigger: Automatic profile creation on auth.users signup
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  resolved_role public.user_role := 'customer';
+  raw_role text;
+  resolved_avatar text;
+  resolved_name text;
+  resolved_phone text;
 begin
-  insert into public.profiles (id, role, full_name, phone, avatar_url)
+  -- 1. Safely resolve user role, defaulting to 'customer'
+  raw_role := lower(trim(coalesce(new.raw_user_meta_data->>'role', 'customer')));
+  if raw_role = 'tailor' then
+    resolved_role := 'tailor'::public.user_role;
+  elsif raw_role = 'admin' then
+    resolved_role := 'admin'::public.user_role;
+  else
+    resolved_role := 'customer'::public.user_role;
+  end if;
+
+  -- 2. Safely resolve name (supports Google 'full_name' or 'name' or email username)
+  resolved_name := coalesce(
+    nullif(trim(new.raw_user_meta_data->>'full_name'), ''),
+    nullif(trim(new.raw_user_meta_data->>'name'), ''),
+    nullif(split_part(new.email, '@', 1), ''),
+    'User'
+  );
+
+  -- 3. Safely resolve avatar (Google sends 'picture', Supabase/custom sends 'avatar_url')
+  resolved_avatar := coalesce(
+    nullif(trim(new.raw_user_meta_data->>'avatar_url'), ''),
+    nullif(trim(new.raw_user_meta_data->>'picture'), '')
+  );
+
+  -- 4. Safely resolve phone
+  resolved_phone := coalesce(
+    nullif(trim(new.raw_user_meta_data->>'phone'), ''),
+    nullif(trim(new.raw_user_meta_data->>'phone_number'), ''),
+    nullif(trim(new.phone), '')
+  );
+
+  -- 5. Insert profile with ON CONFLICT DO UPDATE so duplicate keys never crash auth signup
+  insert into public.profiles (
+    id,
+    role,
+    status,
+    full_name,
+    phone,
+    avatar_url,
+    updated_at
+  )
   values (
     new.id,
-    coalesce((new.raw_user_meta_data->>'role')::public.user_role, 'customer'),
-    coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name'),
-    coalesce(new.raw_user_meta_data->>'phone', new.raw_user_meta_data->>'phone_number'),
-    new.raw_user_meta_data->>'avatar_url'
-  );
+    resolved_role,
+    'active',
+    resolved_name,
+    resolved_phone,
+    resolved_avatar,
+    now()
+  )
+  on conflict (id) do update set
+    full_name = coalesce(public.profiles.full_name, excluded.full_name),
+    avatar_url = coalesce(public.profiles.avatar_url, excluded.avatar_url),
+    phone = coalesce(public.profiles.phone, excluded.phone),
+    updated_at = now();
+
+  return new;
+exception when others then
+  -- Fail-safe: ensure trigger never blocks or aborts auth.users signup
   return new;
 end;
 $$;

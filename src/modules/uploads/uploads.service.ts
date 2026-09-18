@@ -5,11 +5,12 @@ export const uploadsService = {
   async uploadImage(userId: string | undefined, _userRole: string | undefined, file?: Express.Multer.File, data: Record<string, unknown> = {}) {
     if (file) {
       const folder = (data.folder as string) || "general";
+      const bucket = ((data.bucket as string) || (folder === "order-designs" ? "order-designs" : "references")) as import("../../services/storage.service.js").StorageBucket;
       const fileExt = file.originalname?.split(".").pop() || "png";
       const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
       const path = `${folder}/${userId || "public"}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
 
-      const { url } = await storageService.uploadFile("references", path, file.buffer, file.mimetype);
+      const { url } = await storageService.uploadFile(bucket, path, file.buffer, file.mimetype);
 
       return {
         fileId: path,
@@ -41,11 +42,12 @@ export const uploadsService = {
   async uploadImages(userId: string | undefined, _userRole: string | undefined, files?: Express.Multer.File[], data: Record<string, unknown> = {}) {
     if (files && files.length > 0) {
       const folder = (data.folder as string) || "general";
+      const bucket = ((data.bucket as string) || (folder === "order-designs" ? "order-designs" : "references")) as import("../../services/storage.service.js").StorageBucket;
       const uploadPromises = files.map(async (file) => {
         const fileExt = file.originalname?.split(".").pop() || "png";
         const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
         const path = `${folder}/${userId || "public"}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
-        const { url } = await storageService.uploadFile("references", path, file.buffer, file.mimetype);
+        const { url } = await storageService.uploadFile(bucket, path, file.buffer, file.mimetype);
         return {
           fileId: path,
           url,

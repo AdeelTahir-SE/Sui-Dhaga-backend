@@ -10,7 +10,8 @@ export type StorageBucket =
   | "verification-documents"
   | "message-attachments"
   | "exports"
-  | "references";
+  | "references"
+  | "order-designs";
 
 export async function initializeStorageBuckets() {
   if (!supabase) return;
@@ -23,6 +24,7 @@ export async function initializeStorageBuckets() {
     "message-attachments",
     "exports",
     "references",
+    "order-designs",
   ];
 
   for (const b of publicBuckets) {

@@ -4,6 +4,27 @@ import {
 } from "../../utils/resource-helper.js";
 import { AppError } from "../../utils/app-error.js";
 
+function formatOrderRecord(order: any) {
+  if (!order) return order;
+  const price = Number(order.total_amount ?? order.totalAmount ?? order.price ?? order.amount ?? 0);
+  return {
+    ...order,
+    total_amount: price,
+    totalAmount: price,
+    price,
+    amount: price,
+    itemName: order.item_name ?? order.itemName ?? null,
+    item_name: order.item_name ?? order.itemName ?? null,
+    designImages: order.design_images ?? order.designImages ?? [],
+    design_images: order.design_images ?? order.designImages ?? [],
+    additionalNotes: order.additional_notes ?? order.additionalNotes ?? null,
+    additional_notes: order.additional_notes ?? order.additionalNotes ?? null,
+    deliveryDate: order.delivery_date ?? order.deliveryDate ?? null,
+    delivery_date: order.delivery_date ?? order.deliveryDate ?? null,
+    measurements: order.measurements ?? {},
+  };
+}
+
 export const ordersService = {
   async getOrders(userId: string | undefined, userRole: string | undefined, page = 1, limit = 20) {
     const client = getDbClient();
@@ -16,7 +37,12 @@ export const ordersService = {
 
     if (userId && userRole !== "admin") {
       if (userRole === "tailor") {
-        query = query.eq("tailor.user_id", userId);
+        const { data: tailor } = await client.from("tailors").select("id").eq("user_id", userId).maybeSingle();
+        if (tailor?.id) {
+          query = query.eq("tailor_id", tailor.id);
+        } else {
+          query = query.eq("tailor_id", userId);
+        }
       } else {
         query = query.eq("customer_id", userId);
       }
@@ -28,8 +54,10 @@ export const ordersService = {
 
     if (error) throw new AppError(error.message, 400);
 
+    const formatted = (data ?? []).map(formatOrderRecord);
+
     return {
-      records: data ?? [],
+      records: formatted,
       page: p,
       limit: l,
       total: count ?? 0,
@@ -48,24 +76,65 @@ export const ordersService = {
     if (error && error.code !== "PGRST116") {
       throw new AppError(error.message, 400);
     }
-    return data;
+    return formatOrderRecord(data);
   },
 
   async createOrder(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
     if (!userId) throw new AppError("Authentication required", 401);
     const client = getDbClient();
-    const mapped = toSnakeCase(data);
+
+    const rawTailorId = (data.tailorId ?? data.tailor_id) as string;
+    if (!rawTailorId) throw new AppError("tailorId is required", 400);
+
+    // Resolve tailor id in case tailor's user_id or profile id was passed
+    let tailorId = rawTailorId;
+    try {
+      const { data: tailorRec } = await client
+        .from("tailors")
+        .select("id")
+        .or(`id.eq.${rawTailorId},user_id.eq.${rawTailorId}`)
+        .maybeSingle();
+      if (tailorRec?.id) {
+        tailorId = tailorRec.id;
+      }
+    } catch {}
+
+    const totalAmount = Number(data.totalAmount ?? data.total_amount ?? data.price ?? data.amount ?? 0);
+    const itemName = (data.itemName ?? data.item_name) as string | undefined;
+    const notes = (data.notes as string | undefined) ?? null;
+    const additionalNotes = (data.additionalNotes ?? data.additional_notes) as string | undefined ?? null;
+    const deliveryDate = (data.deliveryDate ?? data.delivery_date) as string | undefined ?? null;
+    const designImages = (data.designImages ?? data.design_images ?? []) as string[];
+    const measurements = (data.measurements ?? {}) as Record<string, unknown>;
+    const serviceId = (data.serviceId ?? data.service_id) as string | undefined;
+    const designId = (data.designId ?? data.design_id) as string | undefined;
+    const measurementId = (data.measurementId ?? data.measurement_id ?? data.measurementsId) as string | undefined;
+
+    const payload: Record<string, unknown> = {
+      customer_id: userId,
+      tailor_id: tailorId,
+      total_amount: totalAmount,
+      notes,
+      additional_notes: additionalNotes,
+      item_name: itemName ?? null,
+      design_images: Array.isArray(designImages) ? designImages : [],
+      measurements: measurements && typeof measurements === "object" ? measurements : {},
+      delivery_date: deliveryDate,
+      status: "pending",
+    };
+
+    if (serviceId && typeof serviceId === "string" && serviceId.trim()) payload.service_id = serviceId;
+    if (designId && typeof designId === "string" && designId.trim()) payload.design_id = designId;
+    if (measurementId && typeof measurementId === "string" && measurementId.trim()) payload.measurement_id = measurementId;
+
     const { data: created, error } = await client
       .from("orders")
-      .insert({
-        ...mapped,
-        customer_id: userId,
-      })
+      .insert(payload)
       .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*)")
       .single();
 
     if (error) throw new AppError(error.message, 400);
-    return created;
+    return formatOrderRecord(created);
   },
 
   async updateOrderStatus(orderId: string, _userId: string | undefined, _userRole: string | undefined, status: string) {
