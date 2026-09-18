@@ -5,6 +5,8 @@ export const createTailorSchema = z.object({
   specialties: z.array(z.string()).default([]),
   city: z.string().min(1),
   address: z.string().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
   experienceYears: z.number().int().optional(),
   bio: z.string().optional(),
   bannerUrl: z.string().url().optional(),

@@ -3,6 +3,8 @@ export interface CreateTailorPayload {
   specialties: string[];
   city: string;
   address?: string;
+  latitude?: number;
+  longitude?: number;
   experienceYears?: number;
   bio?: string;
   bannerUrl?: string;
@@ -13,6 +15,8 @@ export interface UpdateTailorPayload {
   specialties?: string[];
   city?: string;
   address?: string;
+  latitude?: number;
+  longitude?: number;
   experienceYears?: number;
   bio?: string;
   bannerUrl?: string;

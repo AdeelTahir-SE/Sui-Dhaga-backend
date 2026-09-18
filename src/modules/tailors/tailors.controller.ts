@@ -13,8 +13,41 @@ export const getTailors: RequestHandler = async (req, res) => {
 export const getNearbyTailors: RequestHandler = async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+  const userLat = Number(req.query.lat);
+  const userLng = Number(req.query.lng);
+
   const result = await tailorsService.getTailors(page, limit);
-  paginated(res, result.records, page, limit, result.total, "Nearby tailors fetched successfully");
+  let records = result.records as Array<Record<string, unknown>>;
+
+  if (!isNaN(userLat) && !isNaN(userLng)) {
+    // Haversine formula to compute distance in km
+    records = records
+      .map((t) => {
+        const tLat = typeof t.latitude === "number" ? t.latitude : undefined;
+        const tLng = typeof t.longitude === "number" ? t.longitude : undefined;
+        if (typeof tLat === "number" && typeof tLng === "number") {
+          const dLat = ((tLat - userLat) * Math.PI) / 180;
+          const dLng = ((tLng - userLng) * Math.PI) / 180;
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos((userLat * Math.PI) / 180) *
+              Math.cos((tLat * Math.PI) / 180) *
+              Math.sin(dLng / 2) *
+              Math.sin(dLng / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const distanceKm = parseFloat((6371 * c).toFixed(1));
+          return { ...t, distance_km: distanceKm };
+        }
+        return { ...t, distance_km: null };
+      })
+      .sort((a, b) => {
+        const distA = typeof a.distance_km === "number" ? a.distance_km : 999999;
+        const distB = typeof b.distance_km === "number" ? b.distance_km : 999999;
+        return distA - distB;
+      });
+  }
+
+  paginated(res, records, page, limit, result.total, "Nearby tailors fetched successfully");
 };
 
 export const getTailorsMap: RequestHandler = async (_req, res) => {
