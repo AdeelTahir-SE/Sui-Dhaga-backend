@@ -7,6 +7,16 @@ import { AppError } from "../../utils/app-error.js";
 function formatOrderRecord(order: any) {
   if (!order) return order;
   const price = Number(order.total_amount ?? order.totalAmount ?? order.price ?? order.amount ?? 0);
+  const rawDesignImages = order.design_images ?? order.designImages ?? (order.design?.images ? order.design.images : []);
+  const designImages = Array.isArray(rawDesignImages) ? rawDesignImages : [];
+  const firstDesignImg =
+    (designImages.length > 0 ? designImages[0] : null) ??
+    order.design?.image_url ??
+    order.design?.image ??
+    order.imageUrl ??
+    order.image ??
+    null;
+
   return {
     ...order,
     total_amount: price,
@@ -15,8 +25,10 @@ function formatOrderRecord(order: any) {
     amount: price,
     itemName: order.item_name ?? order.itemName ?? null,
     item_name: order.item_name ?? order.itemName ?? null,
-    designImages: order.design_images ?? order.designImages ?? [],
-    design_images: order.design_images ?? order.designImages ?? [],
+    designImages,
+    design_images: designImages,
+    imageUrl: firstDesignImg,
+    image: firstDesignImg,
     additionalNotes: order.additional_notes ?? order.additionalNotes ?? null,
     additional_notes: order.additional_notes ?? order.additionalNotes ?? null,
     deliveryDate: order.delivery_date ?? order.deliveryDate ?? null,
