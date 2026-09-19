@@ -1,25 +1,98 @@
 import {
   getDbClient,
   toSnakeCase,
-  fetchTableData,
   deleteTableData,
 } from "../../utils/resource-helper.js";
 import { storageService } from "../../services/storage.service.js";
 import { AppError } from "../../utils/app-error.js";
 
+export interface GetPostsOptions {
+  page?: number;
+  limit?: number;
+  category?: string;
+  tag?: string;
+  search?: string;
+  userId?: string;
+}
+
 export const communityService = {
-  async getPosts(page = 1, limit = 20) {
-    return fetchTableData({
-      table: "community_posts",
-      select: "*, author:profiles!user_id(*)",
+  async getPosts(options: GetPostsOptions = {}) {
+    const client = getDbClient();
+    const page = Math.max(1, options.page || 1);
+    const limit = Math.min(100, Math.max(1, options.limit || 20));
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    let query = client
+      .from("community_posts")
+      .select("*, author:profiles!user_id(*)", { count: "exact" });
+
+    // Category filter (if not "All", "For You", "Trending")
+    if (
+      options.category &&
+      !["all", "for you", "trending"].includes(options.category.trim().toLowerCase())
+    ) {
+      const cat = options.category.trim();
+      query = query.or(`category.ilike.%${cat}%,tags.cs.{${cat}}`);
+    }
+
+    // Tag filter
+    if (options.tag) {
+      const cleanTag = options.tag.replace(/^#/, "").trim();
+      if (cleanTag) {
+        query = query.contains("tags", [cleanTag]);
+      }
+    }
+
+    // Search filter
+    if (options.search && options.search.trim()) {
+      const q = options.search.trim();
+      query = query.or(`title.ilike.%${q}%,content.ilike.%${q}%,category.ilike.%${q}%`);
+    }
+
+    // Sort order: "Trending" sorts by likes_count desc, otherwise created_at desc
+    if (options.category && options.category.trim().toLowerCase() === "trending") {
+      query = query.order("likes_count", { ascending: false }).order("created_at", { ascending: false });
+    } else {
+      query = query.order("created_at", { ascending: false });
+    }
+
+    const { data, count, error } = await query.range(from, to);
+    if (error) throw new AppError(error.message, 400);
+
+    let posts = (data ?? []) as any[];
+
+    // If authenticated userId is passed, attach is_liked and is_saved
+    if (options.userId && posts.length > 0) {
+      const postIds = posts.map((p) => p.id);
+      try {
+        const [likesRes, savesRes] = await Promise.all([
+          client.from("community_likes").select("post_id").eq("user_id", options.userId).in("post_id", postIds),
+          client.from("community_saves").select("post_id").eq("user_id", options.userId).in("post_id", postIds),
+        ]);
+
+        const likedSet = new Set((likesRes.data ?? []).map((l) => l.post_id));
+        const savedSet = new Set((savesRes.data ?? []).map((s) => s.post_id));
+
+        posts = posts.map((p) => ({
+          ...p,
+          is_liked: likedSet.has(p.id),
+          is_saved: savedSet.has(p.id),
+        }));
+      } catch {
+        // Continue gracefully if like queries fail
+      }
+    }
+
+    return {
+      records: posts,
+      total: count ?? posts.length,
       page,
       limit,
-      orderColumn: "created_at",
-      ascending: false,
-    });
+    };
   },
 
-  async getPostById(postId: string) {
+  async getPostById(postId: string, userId?: string) {
     const client = getDbClient();
     const { data, error } = await client
       .from("community_posts")
@@ -30,7 +103,22 @@ export const communityService = {
     if (error && error.code !== "PGRST116") {
       throw new AppError(error.message, 400);
     }
-    return data;
+    if (!data) return null;
+
+    let post = data as any;
+    if (userId) {
+      try {
+        const [likeRes, saveRes] = await Promise.all([
+          client.from("community_likes").select("post_id").eq("post_id", postId).eq("user_id", userId).single(),
+          client.from("community_saves").select("post_id").eq("post_id", postId).eq("user_id", userId).single(),
+        ]);
+        post.is_liked = Boolean(likeRes.data);
+        post.is_saved = Boolean(saveRes.data);
+      } catch {
+        // Continue gracefully
+      }
+    }
+    return post;
   },
 
   async createPost(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>, files?: Express.Multer.File[]) {
@@ -57,6 +145,23 @@ export const communityService = {
 
     if (imageUrls.length > 0) {
       mapped.images = imageUrls;
+    }
+
+    // Map caption to content if needed
+    if (!mapped.content && (data.caption || mapped.caption)) {
+      mapped.content = (data.caption || mapped.caption) as string;
+    }
+
+    // Default title if omitted
+    if (!mapped.title) {
+      mapped.title = (data.category as string) || ((mapped.content as string)?.slice(0, 40)) || "Custom Outfit";
+    }
+    if (!mapped.content) {
+      mapped.content = mapped.title as string;
+    }
+
+    if (data.category) {
+      mapped.category = data.category;
     }
 
     if (typeof mapped.tags === "string") {
@@ -114,13 +219,13 @@ export const communityService = {
       const { data: post } = await client.from("community_posts").select("likes_count").eq("id", postId).single();
       const count = Math.max(0, (post?.likes_count ?? 1) - 1);
       const { data: updated } = await client.from("community_posts").update({ likes_count: count }).eq("id", postId).select().single();
-      return { liked: false, post: updated };
+      return { liked: false, post: updated ? { ...updated, is_liked: false } : null };
     } else {
       await client.from("community_likes").insert({ post_id: postId, user_id: userId });
       const { data: post } = await client.from("community_posts").select("likes_count").eq("id", postId).single();
       const count = (post?.likes_count ?? 0) + 1;
       const { data: updated } = await client.from("community_posts").update({ likes_count: count }).eq("id", postId).select().single();
-      return { liked: true, post: updated };
+      return { liked: true, post: updated ? { ...updated, is_liked: true } : null };
     }
   },
 
@@ -139,13 +244,13 @@ export const communityService = {
       const { data: post } = await client.from("community_posts").select("saves_count").eq("id", postId).single();
       const count = Math.max(0, (post?.saves_count ?? 1) - 1);
       const { data: updated } = await client.from("community_posts").update({ saves_count: count }).eq("id", postId).select().single();
-      return { saved: false, post: updated };
+      return { saved: false, post: updated ? { ...updated, is_saved: false } : null };
     } else {
       await client.from("community_saves").insert({ post_id: postId, user_id: userId });
       const { data: post } = await client.from("community_posts").select("saves_count").eq("id", postId).single();
       const count = (post?.saves_count ?? 0) + 1;
       const { data: updated } = await client.from("community_posts").update({ saves_count: count }).eq("id", postId).select().single();
-      return { saved: true, post: updated };
+      return { saved: true, post: updated ? { ...updated, is_saved: true } : null };
     }
   },
 
@@ -164,7 +269,9 @@ export const communityService = {
   async addComment(postId: string, userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
     if (!userId) throw new AppError("Authentication required", 401);
     const client = getDbClient();
-    const content = (data.content || "") as string;
+    const content = (((data.content || data.text || "") as string) || "").trim();
+    if (!content) throw new AppError("Comment cannot be empty", 400);
+
     const { data: created, error } = await client
       .from("community_comments")
       .insert({
@@ -176,7 +283,16 @@ export const communityService = {
       .single();
 
     if (error) throw new AppError(error.message, 400);
+
+    // Update comments_count in community_posts
+    try {
+      const { data: post } = await client.from("community_posts").select("comments_count").eq("id", postId).single();
+      const count = (post?.comments_count ?? 0) + 1;
+      await client.from("community_posts").update({ comments_count: count }).eq("id", postId);
+    } catch {
+      // Trigger handles or ignore
+    }
+
     return created;
   },
 };
-

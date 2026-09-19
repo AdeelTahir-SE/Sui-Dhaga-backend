@@ -6,7 +6,20 @@ import { communityService } from "./community.service.js";
 export const getPosts: RequestHandler = async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-  const result = await communityService.getPosts(page, limit);
+  const category = typeof req.query.category === "string" ? req.query.category : undefined;
+  const tag = typeof req.query.tag === "string" ? req.query.tag : undefined;
+  const search = typeof req.query.search === "string" ? req.query.search : undefined;
+  const userId = req.user?.id;
+
+  const result = await communityService.getPosts({
+    page,
+    limit,
+    category,
+    tag,
+    search,
+    userId,
+  });
+
   paginated(res, result.records, page, limit, result.total, "Community posts fetched successfully");
 };
 
@@ -17,7 +30,7 @@ export const createPost: RequestHandler = async (req, res) => {
 };
 
 export const getPostById: RequestHandler = async (req, res) => {
-  const post = await communityService.getPostById(asString(req.params.postId));
+  const post = await communityService.getPostById(asString(req.params.postId), req.user?.id);
   success(res, post, "Community post fetched successfully");
 };
 
@@ -42,8 +55,8 @@ export const toggleSave: RequestHandler = async (req, res) => {
 };
 
 export const getComments: RequestHandler = async (req, res) => {
-  const post = await communityService.getPostById(asString(req.params.postId));
-  success(res, post ? (post as Record<string, unknown>).comments ?? [] : [], "Post comments fetched successfully");
+  const comments = await communityService.getComments(asString(req.params.postId));
+  success(res, comments, "Post comments fetched successfully");
 };
 
 export const addComment: RequestHandler = async (req, res) => {
