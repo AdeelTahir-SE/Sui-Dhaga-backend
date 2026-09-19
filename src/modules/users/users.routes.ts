@@ -119,4 +119,5 @@ usersRoutes.post("/users/me/avatar", requireAuth, uploadAvatar.single("avatar"),
  *         description: User public profile details
  */
 usersRoutes.get("/users/:userId", requireAuth, asyncHandler(usersController.getUserById));
-
+usersRoutes.post("/users/report", requireAuth, asyncHandler(usersController.reportUser));
+usersRoutes.post("/users/block", requireAuth, asyncHandler(usersController.blockUser));

@@ -31,3 +31,15 @@ export const getUserById: RequestHandler = async (req, res) => {
   const user = await usersService.getUserById(asString(req.params.userId), req.user?.id, req.userRole);
   success(res, user, "User fetched successfully");
 };
+
+export const reportUser: RequestHandler = async (req, res) => {
+  const { targetId, reason, details } = req.body;
+  const result = await usersService.reportUser(req.user!.id, targetId, reason, details);
+  success(res, result, "Report submitted successfully");
+};
+
+export const blockUser: RequestHandler = async (req, res) => {
+  const { targetId } = req.body;
+  const result = await usersService.blockUser(req.user!.id, targetId);
+  success(res, result, "User blocked successfully");
+};
