@@ -154,10 +154,11 @@ export const communityService = {
       mapped.images = imageUrls;
     }
 
-    // Map caption to content if needed
+    // Map caption to content if needed and strip caption from db payload
     if (!mapped.content && (data.caption || mapped.caption)) {
       mapped.content = (data.caption || mapped.caption) as string;
     }
+    delete (mapped as any).caption;
 
     // Default title if omitted
     if (!mapped.title) {
@@ -175,12 +176,21 @@ export const communityService = {
       mapped.tags = (mapped.tags as string).split(",").map((t) => t.trim()).filter(Boolean);
     }
 
+    // Prepare strict database columns matching public.community_posts
+    const postPayload: Record<string, unknown> = {
+      user_id: userId,
+      title: mapped.title,
+      content: mapped.content,
+      images: mapped.images || [],
+      tags: mapped.tags || [],
+    };
+    if (mapped.category) {
+      postPayload.category = mapped.category;
+    }
+
     const { data: created, error } = await client
       .from("community_posts")
-      .insert({
-        ...mapped,
-        user_id: userId,
-      })
+      .insert(postPayload)
       .select("*, author:profiles!user_id(*)")
       .single();
 
@@ -191,7 +201,20 @@ export const communityService = {
   async updatePost(postId: string, userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>) {
     const client = getDbClient();
     const mapped = toSnakeCase(data);
-    let query = client.from("community_posts").update(mapped).eq("id", postId);
+    if (!mapped.content && (data.caption || mapped.caption)) {
+      mapped.content = (data.caption || mapped.caption) as string;
+    }
+    delete (mapped as any).caption;
+
+    const allowedColumns = ["title", "content", "images", "tags", "category"];
+    const updatePayload: Record<string, unknown> = {};
+    for (const col of allowedColumns) {
+      if (col in mapped) {
+        updatePayload[col] = mapped[col];
+      }
+    }
+
+    let query = client.from("community_posts").update(updatePayload).eq("id", postId);
 
     if (userId && userRole !== "admin") {
       query = query.eq("user_id", userId);
