@@ -133,7 +133,14 @@ export const communityService = {
 
     if (files && files.length > 0) {
       const uploadPromises = files.map(async (file) => {
-        const fileExt = file.originalname?.split(".").pop() || "png";
+        let fileExt = file.originalname?.split(".").pop();
+        if (!fileExt || fileExt === file.originalname) {
+          if (file.mimetype?.includes("mp4")) fileExt = "mp4";
+          else if (file.mimetype?.includes("quicktime")) fileExt = "mov";
+          else if (file.mimetype?.includes("webm")) fileExt = "webm";
+          else if (file.mimetype?.startsWith("video/")) fileExt = "mp4";
+          else fileExt = "png";
+        }
         const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
         const path = `${userId}/post-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
         const { url } = await storageService.uploadFile("community-posts", path, file.buffer, file.mimetype);

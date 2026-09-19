@@ -130,6 +130,14 @@ export const uploadMultipleImages = (fieldName: string = "images", maxCount = 10
     fileFilter: imageFileFilter,
   }).array(fieldName, maxCount);
 
+// Community media upload helper (Images & Videos / Reels up to 50MB)
+export const uploadCommunityMedia = (fieldName: string = "images", maxCount = 10, maxSizeBytes = 50 * 1024 * 1024) =>
+  multer({
+    storage,
+    limits: { fileSize: maxSizeBytes, files: maxCount },
+    fileFilter: documentFileFilter,
+  }).array(fieldName, maxCount);
+
 // Single document upload helper
 export const uploadDocument = (fieldName: string = "file", maxSizeBytes = 15 * 1024 * 1024) =>
   multer({
