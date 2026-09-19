@@ -264,6 +264,7 @@ conversationsRoutes.get("/conversations/:conversationId", requireAuth, asyncHand
  */
 conversationsRoutes.get("/conversations/:conversationId/messages", requireAuth, asyncHandler(conversationsController.getMessages));
 conversationsRoutes.post("/conversations/:conversationId/messages", requireAuth, uploadChatMedia(), validate(sendMessageSchema), asyncHandler(conversationsController.sendMessage));
+conversationsRoutes.patch("/conversations/:conversationId/read", requireAuth, asyncHandler(conversationsController.markConversationRead));
 
 /**
  * @openapi

@@ -95,6 +95,11 @@ export const markAsRead: RequestHandler = async (req, res) => {
   success(res, updated, "Message marked as read");
 };
 
+export const markConversationRead: RequestHandler = async (req, res) => {
+  const updated = await conversationsService.markConversationRead(asString(req.params.conversationId), req.user?.id);
+  success(res, updated, "Conversation marked as read");
+};
+
 export const addAttachment: RequestHandler = async (req, res) => {
   const files = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
   const updated = await conversationsService.addAttachment(asString(req.params.messageId), req.user?.id, req.userRole, files, req.body);

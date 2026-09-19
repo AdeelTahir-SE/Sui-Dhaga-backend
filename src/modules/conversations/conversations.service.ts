@@ -337,6 +337,23 @@ export const conversationsService = {
     return updated;
   },
 
+  async markConversationRead(conversationId: string, userId: string | undefined) {
+    const client = getDbClient();
+    let query = client
+      .from("messages")
+      .update({ is_read: true, read_at: new Date().toISOString() })
+      .eq("conversation_id", conversationId)
+      .eq("is_read", false);
+
+    if (userId) {
+      query = query.neq("sender_id", userId);
+    }
+
+    const { data: updated, error } = await query.select();
+    if (error) throw new AppError(error.message, 400);
+    return updated || [];
+  },
+
   async addAttachment(
     messageId: string,
     _userId: string | undefined,
