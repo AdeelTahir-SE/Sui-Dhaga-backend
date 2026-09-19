@@ -1,11 +1,14 @@
 export interface CreateMeasurementPayload {
-  title: string;
-  unit: "in" | "cm";
+  title?: string;
+  profileName?: string;
+  unit?: "in" | "cm" | "inches";
   chest?: number;
   waist?: number;
   hips?: number;
   shoulder?: number;
   sleeveLength?: number;
+  shirtLength?: number;
+  trouserLength?: number;
   inseam?: number;
   neck?: number;
   notes?: string;

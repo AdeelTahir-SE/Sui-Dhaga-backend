@@ -61,6 +61,7 @@ const measurementAuth = [requireAuth, requireRole("customer", "tailor", "admin")
  *         description: Measurement profile created successfully
  */
 measurementsRoutes.get("/measurements", ...measurementAuth, asyncHandler(measurementsController.getMeasurements));
+measurementsRoutes.get("/measurements/my", ...measurementAuth, asyncHandler(measurementsController.getMeasurements));
 measurementsRoutes.post("/measurements", requireAuth, requireRole("customer", "admin"), validate(createMeasurementSchema), asyncHandler(measurementsController.createMeasurement));
 
 /**
@@ -141,4 +142,5 @@ measurementsRoutes.post("/measurements", requireAuth, requireRole("customer", "a
  */
 measurementsRoutes.get("/measurements/:measurementId", ...measurementAuth, asyncHandler(measurementsController.getMeasurementById));
 measurementsRoutes.patch("/measurements/:measurementId", ...measurementAuth, validate(updateMeasurementSchema), asyncHandler(measurementsController.updateMeasurement));
+measurementsRoutes.put("/measurements/:measurementId", ...measurementAuth, validate(updateMeasurementSchema), asyncHandler(measurementsController.updateMeasurement));
 measurementsRoutes.delete("/measurements/:measurementId", ...measurementAuth, asyncHandler(measurementsController.deleteMeasurement));
