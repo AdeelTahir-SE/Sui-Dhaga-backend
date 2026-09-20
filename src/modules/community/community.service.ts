@@ -13,6 +13,7 @@ export interface GetPostsOptions {
   tag?: string;
   search?: string;
   userId?: string;
+  authorId?: string;
 }
 
 export const communityService = {
@@ -26,6 +27,11 @@ export const communityService = {
     let query = client
       .from("community_posts")
       .select("*, author:profiles!user_id(*)", { count: "exact" });
+
+    // Author filter
+    if (options.authorId) {
+      query = query.eq("user_id", options.authorId);
+    }
 
     // Category filter (if not "All", "For You", "Trending")
     if (

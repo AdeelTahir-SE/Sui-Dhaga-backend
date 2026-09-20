@@ -85,9 +85,17 @@ export const getTailorsMap: RequestHandler = async (req, res) => {
 
   const cityQuery = typeof req.query.city === "string" ? req.query.city.trim().toLowerCase() : "";
   const searchQuery = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : "";
-  const userLat = Number(req.query.lat);
-  const userLng = Number(req.query.lng);
+  let userLat = Number(req.query.lat);
+  let userLng = Number(req.query.lng);
   const radius = Number(req.query.radius);
+
+  if ((isNaN(userLat) || isNaN(userLng)) && cityQuery && cityQuery !== "all") {
+    const baseCoords = CITY_COORDINATES[cityQuery] || CITY_COORDINATES["lahore"];
+    if (baseCoords) {
+      userLat = baseCoords.lat;
+      userLng = baseCoords.lng;
+    }
+  }
 
   records = records.map((t) => {
     let lat = typeof t.latitude === "number" && !isNaN(t.latitude) ? t.latitude : undefined;

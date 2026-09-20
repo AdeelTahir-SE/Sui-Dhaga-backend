@@ -10,6 +10,7 @@ export const getPosts: RequestHandler = async (req, res) => {
   const tag = typeof req.query.tag === "string" ? req.query.tag : undefined;
   const search = typeof req.query.search === "string" ? req.query.search : undefined;
   const userId = req.user?.id;
+  const authorId = typeof req.query.authorId === "string" ? req.query.authorId : typeof req.query.userId === "string" ? req.query.userId : undefined;
 
   const result = await communityService.getPosts({
     page,
@@ -18,6 +19,7 @@ export const getPosts: RequestHandler = async (req, res) => {
     tag,
     search,
     userId,
+    authorId,
   });
 
   paginated(res, result.records, page, limit, result.total, "Community posts fetched successfully");
