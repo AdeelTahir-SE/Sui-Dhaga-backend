@@ -41,7 +41,66 @@ export const authService = {
     const client = getDbClient();
     const { data, error } = await client.auth.signInWithPassword(credentials);
     if (error) throw new AppError("Invalid email or password", 401);
-    return { user: data.user, session: data.session };
+
+    // Check if user profile exists in profiles table
+    let profile: any = null;
+    try {
+      const { data: prof } = await client
+        .from("profiles")
+        .select("*")
+        .eq("id", data.user.id)
+        .maybeSingle();
+      profile = prof;
+    } catch {}
+
+    // Check if tailor record exists if role is tailor
+    let hasTailor = true;
+    const userRole = profile?.role || data.user.user_metadata?.role || "customer";
+    if (userRole === "tailor") {
+      try {
+        const { data: tailor } = await client
+          .from("tailors")
+          .select("id")
+          .eq("user_id", data.user.id)
+          .maybeSingle();
+        hasTailor = Boolean(tailor?.id);
+      } catch {}
+    }
+
+    const hasPhone = Boolean(profile?.phone || data.user.phone || data.user.user_metadata?.phone);
+    const hasRoleSet = Boolean(profile?.role && profile.role !== "authenticated");
+    const isProfileCompleted = Boolean(
+      profile &&
+      hasPhone &&
+      hasRoleSet &&
+      hasTailor
+    );
+
+    const needsProfileCompletion = !isProfileCompleted;
+
+    const resolvedName =
+      profile?.full_name ||
+      data.user.user_metadata?.full_name ||
+      data.user.user_metadata?.name ||
+      data.user.email?.split("@")[0] ||
+      "User";
+
+    return {
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        fullName: resolvedName,
+        name: resolvedName,
+        role: userRole,
+        phone: profile?.phone || data.user.phone || data.user.user_metadata?.phone || undefined,
+        avatarUrl: profile?.avatar_url || data.user.user_metadata?.avatar_url || undefined,
+        avatar: profile?.avatar_url || data.user.user_metadata?.avatar_url || undefined,
+        profileCompleted: isProfileCompleted,
+      },
+      profile,
+      session: data.session,
+      needsProfileCompletion,
+    };
   },
 
   async logout() {
@@ -304,12 +363,32 @@ export const authService = {
       profile = updatedProf || profile;
     }
 
-    // Check if account completion is required (new user or profile_completed flag is false)
+    // Check if account completion is required (exists in profiles table, phone is provided, role is set, tailor record exists if tailor)
     const hasCompletedFlag = targetUser.user_metadata?.profile_completed === true;
     const hasRoleSet = Boolean(profile?.role && profile.role !== "authenticated");
     const hasPhone = Boolean(profile?.phone || targetUser.user_metadata?.phone);
 
-    const needsProfileCompletion = !hasCompletedFlag || !hasRoleSet || !hasPhone;
+    let hasTailor = true;
+    if (profile?.role === "tailor" || targetUser.user_metadata?.role === "tailor") {
+      try {
+        const { data: tailor } = await client
+          .from("tailors")
+          .select("id")
+          .eq("user_id", targetUser.id)
+          .maybeSingle();
+        hasTailor = Boolean(tailor?.id);
+      } catch {}
+    }
+
+    const isProfileCompleted = Boolean(
+      profile &&
+      hasPhone &&
+      hasRoleSet &&
+      hasTailor &&
+      hasCompletedFlag
+    );
+
+    const needsProfileCompletion = !isProfileCompleted;
 
     // Generate or maintain access token
     let sessionToken = token;
@@ -361,36 +440,41 @@ export const authService = {
       metaUpdates.name = resolvedName;
     }
 
-    await client.auth.admin.updateUserById(userId, {
-      user_metadata: metaUpdates,
-      app_metadata: { role },
-    });
+    try {
+      await client.auth.admin.updateUserById(userId, {
+        user_metadata: metaUpdates,
+        app_metadata: { role },
+      });
+    } catch (metaErr) {
+      console.warn("Notice: updateUserById error in completeProfile:", metaErr);
+    }
 
-    // 2. Update profiles table
-    const profileUpdates: Record<string, unknown> = {
+    // 2. Upsert into profiles table to prevent failure when row doesn't exist
+    const profileUpsertData: Record<string, unknown> = {
+      id: userId,
       role,
+      status: "active",
       updated_at: new Date().toISOString(),
     };
-    if (phone) profileUpdates.phone = phone;
-    if (resolvedName) profileUpdates.full_name = resolvedName;
-    if (address) profileUpdates.address = address;
+    if (phone) profileUpsertData.phone = phone;
+    if (resolvedName) profileUpsertData.full_name = resolvedName;
+    if (address) profileUpsertData.address = address;
 
     const { data: updatedProfile, error: profileErr } = await client
       .from("profiles")
-      .update(profileUpdates)
-      .eq("id", userId)
+      .upsert(profileUpsertData, { onConflict: "id" })
       .select()
       .single();
 
     if (profileErr) throw new AppError(profileErr.message, 400);
 
-    // 3. If tailor, ensure row exists in tailors table
+    // 3. If tailor, ensure row exists in tailors table using maybeSingle()
     if (role === "tailor") {
       const { data: existingTailor } = await client
         .from("tailors")
         .select("id")
         .eq("user_id", userId)
-        .single();
+        .maybeSingle();
 
       if (!existingTailor) {
         await client.from("tailors").insert({
