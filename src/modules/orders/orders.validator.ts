@@ -23,7 +23,15 @@ export const createOrderSchema = z.object({
 });
 
 export const updateOrderStatusSchema = z.object({
-  status: z.enum(["pending", "confirmed", "in_progress", "completed", "cancelled"]),
+  status: z.preprocess((val) => {
+    if (typeof val === "string") {
+      const s = val.trim().toLowerCase().replace(/\s+/g, "_");
+      if (s === "accepted") return "in_progress";
+      if (s === "declined" || s === "rejected") return "cancelled";
+      return s;
+    }
+    return val;
+  }, z.enum(["pending", "confirmed", "in_progress", "completed", "cancelled"])),
 });
 
 export const addOrderTrackingSchema = z.object({

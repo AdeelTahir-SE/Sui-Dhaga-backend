@@ -17,7 +17,15 @@ export const createAppointmentSchema = z
   .passthrough();
 
 export const updateAppointmentStatusSchema = z.object({
-  status: z.enum(["pending", "confirmed", "rescheduled", "completed", "cancelled"]),
+  status: z.preprocess((val) => {
+    if (typeof val === "string") {
+      const s = val.trim().toLowerCase().replace(/\s+/g, "_");
+      if (s === "upcoming" || s === "accepted") return "confirmed";
+      if (s === "declined" || s === "rejected") return "cancelled";
+      return s;
+    }
+    return val;
+  }, z.enum(["pending", "confirmed", "rescheduled", "completed", "cancelled"])),
 });
 
 export const rescheduleAppointmentSchema = z

@@ -5,7 +5,11 @@ export const registerSchema = z.object({
   password: z.string().min(8),
   role: z.enum(["customer", "tailor"]).default("customer"),
   name: z.string().min(1).optional(),
-  phone: z.string().optional(),
+  phone: z
+    .string()
+    .regex(/^\+?[0-9]{7,15}$/, "Please enter a valid phone number (7-15 digits)")
+    .optional()
+    .or(z.literal("")),
 });
 
 export const loginSchema = z.object({
