@@ -75,6 +75,7 @@ ordersRoutes.post("/orders", requireAuth, requireRole("customer", "admin"), vali
  *         description: Order details
  */
 ordersRoutes.get("/orders/:orderId", ...orderAuth, asyncHandler(ordersController.getOrderById));
+ordersRoutes.get("/orders/:orderId/parties", ...orderAuth, asyncHandler(ordersController.getOrderParties));
 
 /**
  * @swagger

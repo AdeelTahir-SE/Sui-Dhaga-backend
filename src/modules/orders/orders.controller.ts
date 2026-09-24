@@ -20,6 +20,11 @@ export const getOrderById: RequestHandler = async (req, res) => {
   success(res, order, "Order fetched successfully");
 };
 
+export const getOrderParties: RequestHandler = async (req, res) => {
+  const parties = await ordersService.getOrderParties(asString(req.params.orderId), req.user?.id, req.userRole);
+  success(res, parties, "Order customer and tailor details fetched successfully");
+};
+
 export const updateOrderStatus: RequestHandler = async (req, res) => {
   const updated = await ordersService.updateOrderStatus(
     asString(req.params.orderId),

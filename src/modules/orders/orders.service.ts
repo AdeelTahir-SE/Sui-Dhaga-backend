@@ -17,6 +17,107 @@ function formatOrderRecord(order: any) {
     order.image ??
     null;
 
+  // Actual Customer Information
+  const customerName =
+    order.customer?.full_name ||
+    order.customer?.fullName ||
+    order.customer?.name ||
+    order.customer_name ||
+    order.customerName ||
+    "Client";
+
+  const customerPhone =
+    order.customer?.phone ||
+    order.customer_phone ||
+    order.customerPhone ||
+    null;
+
+  const customerAvatar =
+    order.customer?.avatar_url ||
+    order.customer?.avatarUrl ||
+    order.customer_avatar ||
+    order.customerAvatar ||
+    null;
+
+  const customerAddress =
+    order.customer?.address ||
+    order.delivery_address ||
+    order.deliveryAddress ||
+    null;
+
+  const customerCity =
+    order.customer?.city ||
+    (order.customer?.address ? order.customer.address.split(",")[0].trim() : null) ||
+    order.customer_city ||
+    order.customerCity ||
+    null;
+
+  // Actual Tailor Information
+  const tailorName =
+    order.tailor?.profile?.full_name ||
+    order.tailor?.profile?.fullName ||
+    order.tailor?.shop_name ||
+    order.tailor?.shopName ||
+    order.tailor_name ||
+    order.tailorName ||
+    "Master Tailor";
+
+  const tailorShopName =
+    order.tailor?.shop_name ||
+    order.tailor?.shopName ||
+    (order.tailor?.profile?.full_name ? `${order.tailor.profile.full_name}'s Tailoring` : "Tailor Studio");
+
+  const tailorAvatar =
+    order.tailor?.banner_url ||
+    order.tailor?.bannerUrl ||
+    order.tailor?.profile?.avatar_url ||
+    order.tailor?.profile?.avatarUrl ||
+    order.tailor_avatar ||
+    order.tailorAvatar ||
+    null;
+
+  const tailorPhone =
+    order.tailor?.profile?.phone ||
+    order.tailor_phone ||
+    order.tailorPhone ||
+    null;
+
+  const tailorCity =
+    order.tailor?.city ||
+    order.tailor?.address ||
+    order.tailor?.profile?.address ||
+    order.tailor_city ||
+    order.tailorCity ||
+    null;
+
+  const rawSpecialties =
+    order.tailor?.specialties ||
+    (order.tailor?.specialty ? [order.tailor.specialty] : []);
+  const tailorSpecialties = Array.isArray(rawSpecialties) ? rawSpecialties : [];
+  const tailorSpecialty =
+    tailorSpecialties[0] ||
+    order.tailor_specialty ||
+    order.tailorSpecialty ||
+    null;
+
+  const tailorRating =
+    order.tailor?.rating !== undefined && order.tailor?.rating !== null
+      ? Number(order.tailor.rating)
+      : (order.tailor_rating ?? order.tailorRating ?? null);
+
+  const tailorReviewCount =
+    order.tailor?.review_count !== undefined && order.tailor?.review_count !== null
+      ? Number(order.tailor.review_count)
+      : (order.tailor?.reviewCount !== undefined && order.tailor?.reviewCount !== null
+          ? Number(order.tailor.reviewCount)
+          : null);
+
+  const tailorVerified = Boolean(
+    order.tailor?.verified ||
+    order.tailor?.verification_status === "verified" ||
+    order.tailor_verified
+  );
+
   return {
     ...order,
     total_amount: price,
@@ -34,7 +135,138 @@ function formatOrderRecord(order: any) {
     deliveryDate: order.delivery_date ?? order.deliveryDate ?? null,
     delivery_date: order.delivery_date ?? order.deliveryDate ?? null,
     measurements: order.measurements ?? {},
+
+    // Real Customer details
+    customerName,
+    customer_name: customerName,
+    customerPhone,
+    customer_phone: customerPhone,
+    customerAvatar,
+    customer_avatar: customerAvatar,
+    customerAddress,
+    customer_address: customerAddress,
+    customerCity,
+    customer_city: customerCity,
+    customer: order.customer
+      ? {
+          id: order.customer.id || order.customer_id,
+          fullName: customerName,
+          full_name: customerName,
+          phone: customerPhone,
+          avatarUrl: customerAvatar,
+          avatar_url: customerAvatar,
+          address: customerAddress,
+          city: customerCity,
+        }
+      : null,
+
+    // Real Tailor details
+    tailorName,
+    tailor_name: tailorName,
+    tailorShopName,
+    tailor_shop_name: tailorShopName,
+    tailorAvatar,
+    tailor_avatar: tailorAvatar,
+    tailorPhone,
+    tailor_phone: tailorPhone,
+    tailorCity,
+    tailor_city: tailorCity,
+    tailorSpecialties,
+    tailor_specialties: tailorSpecialties,
+    tailorSpecialty,
+    tailor_specialty: tailorSpecialty,
+    tailorRating,
+    tailor_rating: tailorRating,
+    tailorReviewCount,
+    tailor_review_count: tailorReviewCount,
+    tailorVerified,
+    tailor_verified: tailorVerified,
+    tailor: order.tailor
+      ? {
+          id: order.tailor.id || order.tailor_id,
+          userId: order.tailor.user_id,
+          user_id: order.tailor.user_id,
+          shopName: tailorShopName,
+          shop_name: tailorShopName,
+          name: tailorName,
+          avatarUrl: tailorAvatar,
+          avatar_url: tailorAvatar,
+          phone: tailorPhone,
+          city: tailorCity,
+          address: order.tailor.address || tailorCity,
+          rating: tailorRating,
+          reviewCount: tailorReviewCount,
+          review_count: tailorReviewCount,
+          specialties: tailorSpecialties,
+          verified: tailorVerified,
+        }
+      : null,
   };
+}
+
+async function hydrateOrderParties(client: any, order: any) {
+  if (!order) return order;
+
+  // 1. Resolve Customer Profile
+  if (order.customer_id && (!order.customer || !order.customer.full_name)) {
+    try {
+      const { data: custProf } = await client
+        .from("profiles")
+        .select("id, full_name, phone, address, avatar_url, bio, role")
+        .eq("id", order.customer_id)
+        .maybeSingle();
+      if (custProf) {
+        order.customer = { ...order.customer, ...custProf };
+      }
+    } catch {}
+  }
+
+  // 2. Resolve Tailor & Profile
+  const tailorRef = order.tailor_id;
+  if (tailorRef) {
+    try {
+      if (order.tailor && order.tailor.user_id && !order.tailor.profile) {
+        const { data: tailorUserProf } = await client
+          .from("profiles")
+          .select("id, full_name, phone, address, avatar_url, bio")
+          .eq("id", order.tailor.user_id)
+          .maybeSingle();
+        if (tailorUserProf) {
+          order.tailor.profile = tailorUserProf;
+        }
+      } else if (!order.tailor) {
+        const { data: tRec } = await client
+          .from("tailors")
+          .select("*, profile:profiles(*)")
+          .or(`id.eq.${tailorRef},user_id.eq.${tailorRef}`)
+          .maybeSingle();
+        if (tRec) {
+          order.tailor = tRec;
+        } else {
+          const { data: profRec } = await client
+            .from("profiles")
+            .select("id, full_name, phone, address, avatar_url, bio")
+            .eq("id", tailorRef)
+            .maybeSingle();
+          if (profRec) {
+            order.tailor = {
+              id: tailorRef,
+              user_id: profRec.id,
+              shop_name: profRec.full_name ? `${profRec.full_name}'s Tailoring` : "Tailor Studio",
+              city: profRec.address || "Lahore",
+              address: profRec.address || "",
+              rating: null,
+              review_count: 0,
+              specialties: ["Custom Tailoring"],
+              profile: profRec,
+            };
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return order;
 }
 
 export const ordersService = {
@@ -45,7 +277,7 @@ export const ordersService = {
 
     let query = client
       .from("orders")
-      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*), service:tailor_services!service_id(*), design:designs!design_id(*), measurement:measurements!measurement_id(*)", { count: "exact" });
+      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*, profile:profiles(*)), service:tailor_services!service_id(*), design:designs!design_id(*), measurement:measurements!measurement_id(*)", { count: "exact" });
 
     if (userId && userRole !== "admin") {
       if (userRole === "tailor") {
@@ -66,10 +298,15 @@ export const ordersService = {
 
     if (error) throw new AppError(error.message, 400);
 
-    const formatted = (data ?? []).map(formatOrderRecord);
+    const hydratedList = await Promise.all(
+      (data ?? []).map(async (item) => {
+        const hydrated = await hydrateOrderParties(client, item);
+        return formatOrderRecord(hydrated);
+      })
+    );
 
     return {
-      records: formatted,
+      records: hydratedList,
       page: p,
       limit: l,
       total: count ?? 0,
@@ -81,14 +318,17 @@ export const ordersService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("orders")
-      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*), service:tailor_services!service_id(*), design:designs!design_id(*), measurement:measurements!measurement_id(*), tracking:order_tracking(*)")
+      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*, profile:profiles(*)), service:tailor_services!service_id(*), design:designs!design_id(*), measurement:measurements!measurement_id(*), tracking:order_tracking(*)")
       .eq("id", orderId)
-      .single();
+      .maybeSingle();
 
     if (error && error.code !== "PGRST116") {
       throw new AppError(error.message, 400);
     }
-    return formatOrderRecord(data);
+    if (!data) return null;
+
+    const hydrated = await hydrateOrderParties(client, data);
+    return formatOrderRecord(hydrated);
   },
 
   async createOrder(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
@@ -224,6 +464,17 @@ export const ordersService = {
 
     if (error) throw new AppError(error.message, 400);
     return updated;
+  },
+
+  async getOrderParties(orderId: string, userId: string | undefined, userRole: string | undefined) {
+    const order = await this.getOrderById(orderId, userId, userRole);
+    if (!order) throw new AppError("Order not found", 404);
+
+    return {
+      orderId: order.id,
+      customer: order.customer,
+      tailor: order.tailor,
+    };
   },
 };
 
