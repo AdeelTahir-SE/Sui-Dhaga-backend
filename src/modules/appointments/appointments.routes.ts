@@ -53,7 +53,7 @@ const appointmentAuth = [requireAuth, requireRole("customer", "tailor", "admin")
  *         description: Appointment booked successfully
  */
 appointmentsRoutes.get("/appointments", ...appointmentAuth, asyncHandler(appointmentsController.getAppointments));
-appointmentsRoutes.post("/appointments", requireAuth, requireRole("customer", "admin"), validate(createAppointmentSchema), asyncHandler(appointmentsController.createAppointment));
+appointmentsRoutes.post("/appointments", requireAuth, requireRole("customer", "tailor", "admin"), validate(createAppointmentSchema), asyncHandler(appointmentsController.createAppointment));
 
 /**
  * @swagger
