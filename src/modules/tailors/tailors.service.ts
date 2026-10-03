@@ -19,6 +19,145 @@ export const tailorsService = {
     });
   },
 
+  async getNearbyTailors(params: {
+    lat: number;
+    lng: number;
+    radiusKm?: number;
+    city?: string;
+    minRating?: number;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const client = getDbClient();
+    const page = Math.max(1, params.page || 1);
+    const limit = Math.min(100, Math.max(1, params.limit || 20));
+    const offset = (page - 1) * limit;
+    const radiusMeters = (params.radiusKm || 50) * 1000;
+
+    // Call Supabase PostGIS RPC function
+    const { data, error } = await client.rpc("get_nearby_tailors", {
+      user_lat: params.lat,
+      user_lng: params.lng,
+      max_distance_meters: radiusMeters,
+      p_limit: limit,
+      p_offset: offset,
+      p_city: params.city || null,
+      p_min_rating: params.minRating || null,
+      p_search: params.search || null,
+    });
+
+    if (error) {
+      console.warn("PostGIS get_nearby_tailors RPC returned error, falling back to table query:", error.message);
+      return this.fallbackNearbyTailors(params, page, limit);
+    }
+
+    const records = (data || []).map((t: any) => {
+      const distMeters = typeof t.distance_meters === "number" ? t.distance_meters : null;
+      const distKm = distMeters != null ? parseFloat((distMeters / 1000).toFixed(1)) : null;
+      const distStr =
+        distMeters != null
+          ? distMeters < 1000
+            ? `${Math.round(distMeters)} m away`
+            : `${distKm} km away`
+          : null;
+
+      return {
+        ...t,
+        distance_meters: distMeters,
+        distance_km: distKm,
+        distance: distStr,
+      };
+    });
+
+    return {
+      records,
+      total: records.length,
+      page,
+      limit,
+    };
+  },
+
+  async fallbackNearbyTailors(
+    params: {
+      lat: number;
+      lng: number;
+      radiusKm?: number;
+      city?: string;
+      minRating?: number;
+      search?: string;
+    },
+    page = 1,
+    limit = 20
+  ) {
+    const client = getDbClient();
+    let query = client.from("tailors").select("*, profile:profiles(*)");
+
+    if (params.city && params.city.toLowerCase() !== "all") {
+      query = query.ilike("city", `%${params.city}%`);
+    }
+    if (params.minRating) {
+      query = query.gte("rating", params.minRating);
+    }
+
+    const { data, error } = await query;
+    if (error) throw new AppError(error.message, 400);
+
+    let records = (data || []) as Array<Record<string, unknown>>;
+
+    if (params.search) {
+      const q = params.search.toLowerCase();
+      records = records.filter((t) => {
+        const name = String(t.shop_name || "").toLowerCase();
+        const addr = String(t.address || "").toLowerCase();
+        const city = String(t.city || "").toLowerCase();
+        return name.includes(q) || addr.includes(q) || city.includes(q);
+      });
+    }
+
+    const radiusKm = params.radiusKm || 50;
+    records = records
+      .map((t) => {
+        const tLat = typeof t.latitude === "number" ? t.latitude : undefined;
+        const tLng = typeof t.longitude === "number" ? t.longitude : undefined;
+        if (typeof tLat === "number" && typeof tLng === "number") {
+          const dLat = ((tLat - params.lat) * Math.PI) / 180;
+          const dLng = ((tLng - params.lng) * Math.PI) / 180;
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos((params.lat * Math.PI) / 180) *
+              Math.cos((tLat * Math.PI) / 180) *
+              Math.sin(dLng / 2) *
+              Math.sin(dLng / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const distanceKm = parseFloat((6371 * c).toFixed(1));
+          return {
+            ...t,
+            distance_km: distanceKm,
+            distance_meters: Math.round(distanceKm * 1000),
+            distance: `${distanceKm} km away`,
+          };
+        }
+        return { ...t, distance_km: null, distance_meters: null, distance: null };
+      })
+      .filter((t) => typeof t.distance_km === "number" && t.distance_km <= radiusKm)
+      .sort((a, b) => {
+        const distA = typeof a.distance_km === "number" ? a.distance_km : 999999;
+        const distB = typeof b.distance_km === "number" ? b.distance_km : 999999;
+        return distA - distB;
+      });
+
+    const offset = (page - 1) * limit;
+    const paginatedRecords = records.slice(offset, offset + limit);
+
+    return {
+      records: paginatedRecords,
+      total: records.length,
+      page,
+      limit,
+    };
+  },
+
   async getTailorById(tailorId: string) {
     const client = getDbClient();
     const { data, error } = await client

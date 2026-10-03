@@ -15,39 +15,27 @@ export const getNearbyTailors: RequestHandler = async (req, res) => {
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
   const userLat = Number(req.query.lat);
   const userLng = Number(req.query.lng);
-
-  const result = await tailorsService.getTailors(page, limit);
-  let records = result.records as Array<Record<string, unknown>>;
+  const radius = Number(req.query.radius) || 50;
+  const city = typeof req.query.city === "string" && req.query.city.toLowerCase() !== "all" ? req.query.city : undefined;
+  const search = typeof req.query.search === "string" ? req.query.search : typeof req.query.q === "string" ? req.query.q : undefined;
+  const minRating = req.query.minRating ? Number(req.query.minRating) : undefined;
 
   if (!isNaN(userLat) && !isNaN(userLng)) {
-    // Haversine formula to compute distance in km
-    records = records
-      .map((t) => {
-        const tLat = typeof t.latitude === "number" ? t.latitude : undefined;
-        const tLng = typeof t.longitude === "number" ? t.longitude : undefined;
-        if (typeof tLat === "number" && typeof tLng === "number") {
-          const dLat = ((tLat - userLat) * Math.PI) / 180;
-          const dLng = ((tLng - userLng) * Math.PI) / 180;
-          const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos((userLat * Math.PI) / 180) *
-              Math.cos((tLat * Math.PI) / 180) *
-              Math.sin(dLng / 2) *
-              Math.sin(dLng / 2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          const distanceKm = parseFloat((6371 * c).toFixed(1));
-          return { ...t, distance_km: distanceKm };
-        }
-        return { ...t, distance_km: null };
-      })
-      .sort((a, b) => {
-        const distA = typeof a.distance_km === "number" ? a.distance_km : 999999;
-        const distB = typeof b.distance_km === "number" ? b.distance_km : 999999;
-        return distA - distB;
-      });
+    const result = await tailorsService.getNearbyTailors({
+      lat: userLat,
+      lng: userLng,
+      radiusKm: radius,
+      city,
+      search,
+      minRating,
+      page,
+      limit,
+    });
+    return paginated(res, result.records, page, limit, result.total, "Nearby tailors fetched successfully");
   }
 
-  paginated(res, records, page, limit, result.total, "Nearby tailors fetched successfully");
+  const result = await tailorsService.getTailors(page, limit);
+  paginated(res, result.records, page, limit, result.total, "Tailors fetched successfully");
 };
 
 const CITY_COORDINATES: Record<string, { lat: number; lng: number }> = {
@@ -80,14 +68,11 @@ function getDeterministicOffset(strId: string): { latOffset: number; lngOffset: 
 }
 
 export const getTailorsMap: RequestHandler = async (req, res) => {
-  const result = await tailorsService.getTailors(1, 100);
-  let records = result.records as Array<Record<string, unknown>>;
-
   const cityQuery = typeof req.query.city === "string" ? req.query.city.trim().toLowerCase() : "";
   const searchQuery = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : "";
   let userLat = Number(req.query.lat);
   let userLng = Number(req.query.lng);
-  const radius = Number(req.query.radius);
+  const radius = Number(req.query.radius) || 50;
 
   if ((isNaN(userLat) || isNaN(userLng)) && cityQuery && cityQuery !== "all") {
     const baseCoords = CITY_COORDINATES[cityQuery] || CITY_COORDINATES["lahore"];
@@ -95,6 +80,24 @@ export const getTailorsMap: RequestHandler = async (req, res) => {
       userLat = baseCoords.lat;
       userLng = baseCoords.lng;
     }
+  }
+
+  let records: Array<Record<string, unknown>> = [];
+
+  if (!isNaN(userLat) && !isNaN(userLng)) {
+    const result = await tailorsService.getNearbyTailors({
+      lat: userLat,
+      lng: userLng,
+      radiusKm: radius,
+      city: cityQuery && cityQuery !== "all" ? cityQuery : undefined,
+      search: searchQuery || undefined,
+      page: 1,
+      limit: 100,
+    });
+    records = result.records as Array<Record<string, unknown>>;
+  } else {
+    const result = await tailorsService.getTailors(1, 100);
+    records = result.records as Array<Record<string, unknown>>;
   }
 
   records = records.map((t) => {
@@ -109,25 +112,10 @@ export const getTailorsMap: RequestHandler = async (req, res) => {
       lng = parseFloat((baseCoords.lng + offset.lngOffset).toFixed(6));
     }
 
-    let distanceKm: number | null = null;
-    if (!isNaN(userLat) && !isNaN(userLng) && lat !== undefined && lng !== undefined) {
-      const dLat = ((lat - userLat) * Math.PI) / 180;
-      const dLng = ((lng - userLng) * Math.PI) / 180;
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((userLat * Math.PI) / 180) *
-          Math.cos((lat * Math.PI) / 180) *
-          Math.sin(dLng / 2) *
-          Math.sin(dLng / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      distanceKm = parseFloat((6371 * c).toFixed(1));
-    }
-
     return {
       ...t,
       latitude: lat,
       longitude: lng,
-      distance_km: distanceKm,
     };
   });
 
@@ -150,24 +138,6 @@ export const getTailorsMap: RequestHandler = async (req, res) => {
         city.includes(searchQuery) ||
         specialties.includes(searchQuery)
       );
-    });
-  }
-
-  if (!isNaN(radius) && radius > 0 && !isNaN(userLat) && !isNaN(userLng)) {
-    records = records.filter((t) => typeof t.distance_km === "number" && t.distance_km <= radius);
-  }
-
-  if (!isNaN(userLat) && !isNaN(userLng)) {
-    records.sort((a, b) => {
-      const distA = typeof a.distance_km === "number" ? a.distance_km : 999999;
-      const distB = typeof b.distance_km === "number" ? b.distance_km : 999999;
-      return distA - distB;
-    });
-  } else {
-    records.sort((a, b) => {
-      const rA = typeof a.rating === "number" ? a.rating : 0;
-      const rB = typeof b.rating === "number" ? b.rating : 0;
-      return rB - rA;
     });
   }
 

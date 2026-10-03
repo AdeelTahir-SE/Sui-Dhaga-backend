@@ -51,3 +51,15 @@ export const tailorAvailabilitySchema = z.object({
 export const tailorsCompareSchema = z.object({
   tailorIds: z.array(z.string()).min(2),
 });
+
+export const getNearbyTailorsQuerySchema = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  lng: z.coerce.number().min(-180).max(180),
+  radius: z.coerce.number().positive().max(500).optional(),
+  city: z.string().optional(),
+  search: z.string().optional(),
+  minRating: z.coerce.number().min(0).max(5).optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+});
+
