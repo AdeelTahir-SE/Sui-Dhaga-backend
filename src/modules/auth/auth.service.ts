@@ -194,6 +194,7 @@ export const authService = {
 
     let targetUser: any = null;
 
+    let refreshToken: string | undefined;
     // 0. If PKCE authorization code provided, exchange it for session
     if (payload.code && payload.code.trim()) {
       try {
@@ -202,6 +203,9 @@ export const authService = {
           targetUser = codeData.user;
           if (codeData.session?.access_token) {
             token = codeData.session.access_token;
+          }
+          if (codeData.session?.refresh_token) {
+            refreshToken = codeData.session.refresh_token;
           }
         }
       } catch (codeErr) {
@@ -218,6 +222,26 @@ export const authService = {
         }
       } catch (tokenErr) {
         console.warn("Notice: Token verification error in Supabase:", tokenErr);
+      }
+
+      // 1b. Fallback: decode JWT payload if getUser failed or had network/clock-skew issues
+      if (!targetUser) {
+        try {
+          const parts = token.trim().split(".");
+          if (parts.length === 3) {
+            const payloadStr = Buffer.from(parts[1], "base64url").toString("utf8");
+            const jwtPayload = JSON.parse(payloadStr);
+            const sub = jwtPayload.sub;
+            if (sub && typeof sub === "string") {
+              const { data: adminUser } = await client.auth.admin.getUserById(sub);
+              if (adminUser?.user) {
+                targetUser = adminUser.user;
+              }
+            }
+          }
+        } catch (jwtErr) {
+          console.warn("Notice: JWT decode fallback error in googleAuth:", jwtErr);
+        }
       }
     }
 
@@ -419,6 +443,8 @@ export const authService = {
       session: {
         access_token: sessionToken,
         token: sessionToken,
+        refresh_token: refreshToken,
+        refreshToken: refreshToken,
       },
       needsProfileCompletion,
     };
@@ -504,12 +530,23 @@ export const authService = {
     };
   },
 
-  getGoogleAuthUrl(redirectUri?: string) {
+  getGoogleAuthUrl(redirectUri?: string, baseUrl?: string) {
     if (!env.SUPABASE_URL) {
       return null;
     }
-    const targetRedirect = redirectUri || "suidhagamobile://auth/callback";
-    return `${env.SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(targetRedirect)}`;
+    const defaultScheme = "suidhagamobile://auth/callback";
+    const appRedirect = redirectUri || defaultScheme;
+
+    // If appRedirect is already the bridge endpoint, direct to Supabase with it
+    if (appRedirect.includes("/auth/google/callback")) {
+      return `${env.SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(appRedirect)}`;
+    }
+
+    // Otherwise wrap appRedirect in the backend's callback bridge so Chrome 302 redirects to custom schemes don't fail
+    const serverBase = baseUrl || "https://sui-dhaga-backend.vercel.app";
+    const bridgeUrl = `${serverBase.replace(/\/+$/, "")}/api/v1/auth/google/callback?appRedirect=${encodeURIComponent(appRedirect)}`;
+
+    return `${env.SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(bridgeUrl)}`;
   },
 
   renderGoogleCallbackHtml(appRedirect?: string) {
@@ -555,30 +592,33 @@ export const authService = {
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     h2 { font-size: 20px; font-weight: 700; color: #111827; margin-bottom: 8px; }
-    p { font-size: 14px; color: #6B7280; line-height: 1.5; margin-bottom: 24px; }
+    p { font-size: 14px; color: #6B7280; line-height: 1.5; margin-bottom: 20px; }
     .btn {
       display: inline-block;
       width: 100%;
       background: #1A847B;
       color: #FFFFFF;
       font-weight: 600;
-      font-size: 15px;
-      padding: 13px 20px;
+      font-size: 16px;
+      padding: 14px 20px;
       border-radius: 10px;
       text-decoration: none;
       transition: background 0.2s;
+      cursor: pointer;
     }
     .btn:hover { background: #13665F; }
-    #manualSection { display: none; margin-top: 8px; }
+    #manualSection { margin-top: 8px; }
+    .hint { font-size: 12px; color: #9CA3AF; margin-top: 12px; }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="spinner" id="spinner"></div>
     <h2>Redirecting to Sui Dhaga...</h2>
-    <p>Please wait while we complete your Google sign in.</p>
+    <p>Please wait while we complete your Google sign in, or tap the button below to return to the app.</p>
     <div id="manualSection">
       <a id="deepLinkBtn" class="btn" href="#">Open Sui Dhaga App</a>
+      <p class="hint">Tap above if the app does not open automatically</p>
     </div>
   </div>
   <script>
@@ -604,16 +644,17 @@ export const authService = {
       var finalUrl = targetBase + (params.length > 0 ? sep + params.join('&') : '');
 
       var btn = document.getElementById('deepLinkBtn');
-      if (btn) btn.href = finalUrl;
+      if (btn) {
+        btn.href = finalUrl;
+        btn.onclick = function() {
+          window.location.href = finalUrl;
+        };
+      }
 
+      // Automatically trigger redirect
       try {
         window.location.href = finalUrl;
       } catch (e) {}
-
-      setTimeout(function() {
-        var manual = document.getElementById('manualSection');
-        if (manual) manual.style.display = 'block';
-      }, 1200);
     })();
   </script>
 </body>

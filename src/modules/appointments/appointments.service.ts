@@ -4,6 +4,8 @@ import {
   deleteTableData,
 } from "../../utils/resource-helper.js";
 import { AppError } from "../../utils/app-error.js";
+import { notificationsService } from "../notifications/notifications.service.js";
+
 
 const isUuid = (val: unknown): boolean =>
   typeof val === "string" &&
@@ -161,6 +163,50 @@ export const appointmentsService = {
       .single();
 
     if (error) throw new AppError(error.message, 400);
+
+    // Notify parties about newly booked appointment
+    try {
+      const customerName = created?.customer?.full_name || "A customer";
+      const tailorUserId = created?.tailor?.user_id;
+      const tailorShop = created?.tailor?.shop_name || "the tailor";
+      const apptDate = created?.appointment_date || appointmentDate;
+      const apptTime = created?.appointment_time || appointmentTime;
+
+      // 1. Notify the tailor about incoming booking
+      if (tailorUserId) {
+        await notificationsService.createNotification({
+          userId: tailorUserId,
+          title: "New Appointment Booked 📅",
+          message: `${customerName} booked an appointment for ${apptDate} at ${apptTime}.`,
+          type: "appointment",
+          data: {
+            appointmentId: created.id,
+            customerId: userId,
+            date: apptDate,
+            time: apptTime,
+          },
+        });
+      }
+
+      // 2. Notify customer with booking confirmation
+      if (userId) {
+        await notificationsService.createNotification({
+          userId,
+          title: "Appointment Booked 📅",
+          message: `Your appointment with ${tailorShop} is scheduled for ${apptDate} at ${apptTime}.`,
+          type: "appointment",
+          data: {
+            appointmentId: created.id,
+            tailorId: created.tailor_id,
+            date: apptDate,
+            time: apptTime,
+          },
+        });
+      }
+    } catch (notifErr: any) {
+      console.warn("[Appointment Creation Notification Warning]:", notifErr?.message || notifErr);
+    }
+
     return created;
   },
 
@@ -171,10 +217,32 @@ export const appointmentsService = {
       .from("appointments")
       .update({ status: normalizedStatus })
       .eq("id", appointmentId)
-      .select()
+      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*)")
       .single();
 
     if (error) throw new AppError(error.message, 400);
+
+    try {
+      if (updated?.customer_id) {
+        const tailorShop = updated?.tailor?.shop_name || "Your tailor";
+        const formattedStatus = normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1);
+
+        await notificationsService.createNotification({
+          userId: updated.customer_id,
+          title: `Appointment ${formattedStatus}`,
+          message: `${tailorShop} marked your appointment on ${updated.appointment_date} as ${normalizedStatus}.`,
+          type: "appointment",
+          data: {
+            appointmentId,
+            status: normalizedStatus,
+            date: updated.appointment_date,
+          },
+        });
+      }
+    } catch (notifErr: any) {
+      console.warn("[Appointment Status Notification Warning]:", notifErr?.message || notifErr);
+    }
+
     return updated;
   },
 
@@ -191,12 +259,34 @@ export const appointmentsService = {
       .from("appointments")
       .update(updatePayload)
       .eq("id", appointmentId)
-      .select()
+      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*)")
       .single();
 
     if (error) throw new AppError(error.message, 400);
+
+    try {
+      if (updated?.customer_id) {
+        const tailorShop = updated?.tailor?.shop_name || "Your tailor";
+        await notificationsService.createNotification({
+          userId: updated.customer_id,
+          title: "Appointment Rescheduled 📅",
+          message: `${tailorShop} rescheduled your appointment to ${updated.appointment_date} at ${updated.appointment_time || ""}.`,
+          type: "appointment",
+          data: {
+            appointmentId,
+            status: "rescheduled",
+            date: updated.appointment_date,
+            time: updated.appointment_time,
+          },
+        });
+      }
+    } catch (notifErr: any) {
+      console.warn("[Appointment Reschedule Notification Warning]:", notifErr?.message || notifErr);
+    }
+
     return updated;
   },
+
 
   async deleteAppointment(appointmentId: string, userId: string | undefined, userRole: string | undefined) {
     return deleteTableData({

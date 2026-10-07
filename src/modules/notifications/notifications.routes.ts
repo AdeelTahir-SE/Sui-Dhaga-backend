@@ -21,6 +21,63 @@ notificationsRoutes.get("/notifications", requireAuth, asyncHandler(notification
 
 /**
  * @openapi
+ * /notifications/unread-count:
+ *   get:
+ *     summary: Get unread notifications count for authenticated user
+ *     tags: [Notifications]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Unread notification count
+ */
+notificationsRoutes.get("/notifications/unread-count", requireAuth, asyncHandler(notificationsController.getUnreadCount));
+
+/**
+ * @openapi
+ * /notifications/push-token:
+ *   post:
+ *     summary: Register or update device push token
+ *     tags: [Notifications]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Push token registered successfully
+ */
+notificationsRoutes.post("/notifications/push-token", requireAuth, asyncHandler(notificationsController.registerPushToken));
+
+/**
+ * @openapi
+ * /notifications:
+ *   post:
+ *     summary: Create a notification (admin or system)
+ *     tags: [Notifications]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       201:
+ *         description: Notification created successfully
+ */
+notificationsRoutes.post("/notifications", requireAuth, asyncHandler(notificationsController.createNotification));
+
+/**
+ * @openapi
+ * /notifications/read-all:
+ *   patch:
+ *     summary: Mark all notifications as read
+ *     tags: [Notifications]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All notifications marked as read
+ */
+notificationsRoutes.patch("/notifications/read-all", requireAuth, asyncHandler(notificationsController.markAllAsRead));
+notificationsRoutes.post("/notifications/read-all", requireAuth, asyncHandler(notificationsController.markAllAsRead));
+
+/**
+ * @openapi
  * /notifications/{notificationId}/read:
  *   patch:
  *     summary: Mark a notification as read
@@ -41,20 +98,6 @@ notificationsRoutes.patch("/notifications/:notificationId/read", requireAuth, as
 
 /**
  * @openapi
- * /notifications/read-all:
- *   patch:
- *     summary: Mark all notifications as read
- *     tags: [Notifications]
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: All notifications marked as read
- */
-notificationsRoutes.patch("/notifications/read-all", requireAuth, asyncHandler(notificationsController.markAllAsRead));
-
-/**
- * @openapi
  * /notifications/{notificationId}:
  *   delete:
  *     summary: Delete a notification
@@ -72,3 +115,4 @@ notificationsRoutes.patch("/notifications/read-all", requireAuth, asyncHandler(n
  *         description: Notification deleted successfully
  */
 notificationsRoutes.delete("/notifications/:notificationId", requireAuth, asyncHandler(notificationsController.deleteNotification));
+

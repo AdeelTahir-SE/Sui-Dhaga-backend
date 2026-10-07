@@ -4,4 +4,5 @@ dist/
 .pnpm-store/
 output/
 
-.temp
+supabase/.temp
+supabase\.temp

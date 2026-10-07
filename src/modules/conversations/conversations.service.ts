@@ -5,6 +5,8 @@ import {
 import { storageService } from "../../services/storage.service.js";
 import { AppError } from "../../utils/app-error.js";
 import { env } from "../../config/env.js";
+import { notificationsService } from "../notifications/notifications.service.js";
+
 
 function getFileExtension(filename?: string, mimetype?: string): string {
   if (filename && filename.includes(".")) {
@@ -321,7 +323,39 @@ export const conversationsService = {
       })
       .eq("id", conversationId);
 
+    // Notify the recipient user
+    try {
+      const { data: conv } = await client
+        .from("conversations")
+        .select("participant1_id, participant2_id")
+        .eq("id", conversationId)
+        .maybeSingle();
+
+      if (conv) {
+        const recipientId = conv.participant1_id === senderId ? conv.participant2_id : conv.participant1_id;
+        if (recipientId) {
+          const senderName = created?.sender?.full_name || "Someone";
+          const previewText = text.length > 80 ? `${text.slice(0, 80)}...` : text;
+
+          await notificationsService.createNotification({
+            userId: recipientId,
+            title: `New message from ${senderName}`,
+            message: previewText || "Sent an attachment",
+            type: "message",
+            data: {
+              conversationId,
+              messageId: created.id,
+              senderId,
+            },
+          });
+        }
+      }
+    } catch (notifErr: any) {
+      console.warn("[Message Notification Warning]:", notifErr?.message || notifErr);
+    }
+
     return created;
+
   },
 
   async markMessageRead(messageId: string, _userId: string | undefined, _userRole: string | undefined) {

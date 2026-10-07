@@ -59,7 +59,8 @@ export const completeProfile: RequestHandler = async (req, res) => {
 
 export const getGoogleAuthUrl: RequestHandler = (req, res) => {
   const redirectUri = typeof req.query.redirectUri === "string" ? req.query.redirectUri : undefined;
-  const url = authService.getGoogleAuthUrl(redirectUri);
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const url = authService.getGoogleAuthUrl(redirectUri, baseUrl);
   success(res, { url }, "Google auth URL fetched");
 };
 

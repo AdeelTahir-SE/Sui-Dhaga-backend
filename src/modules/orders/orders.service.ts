@@ -3,6 +3,8 @@ import {
   toSnakeCase,
 } from "../../utils/resource-helper.js";
 import { AppError } from "../../utils/app-error.js";
+import { notificationsService } from "../notifications/notifications.service.js";
+
 
 function formatOrderRecord(order: any) {
   if (!order) return order;
@@ -386,6 +388,47 @@ export const ordersService = {
       .single();
 
     if (error) throw new AppError(error.message, 400);
+
+    // Notify tailor and customer of new order placement
+    try {
+      const tailorUserId = created?.tailor?.user_id;
+      const customerName = created?.customer?.full_name || "A customer";
+      const itemName = created?.item_name || "Custom Stitching";
+      const orderCode = created?.id ? created.id.slice(0, 8).toUpperCase() : "";
+
+      // 1. Notify the tailor about the new incoming order
+      if (tailorUserId) {
+        await notificationsService.createNotification({
+          userId: tailorUserId,
+          title: "New Order Received 🧵",
+          message: `${customerName} placed an order for ${itemName} (#${orderCode}).`,
+          type: "order",
+          data: {
+            orderId: created.id,
+            customerId: userId,
+            totalAmount: created.total_amount,
+          },
+        });
+      }
+
+      // 2. Notify the customer with order confirmation
+      if (userId) {
+        const tailorShop = created?.tailor?.shop_name || "the tailor";
+        await notificationsService.createNotification({
+          userId,
+          title: "Order Placed Successfully ✨",
+          message: `Your order for ${itemName} (#${orderCode}) was placed with ${tailorShop}.`,
+          type: "order",
+          data: {
+            orderId: created.id,
+            tailorId: created.tailor_id,
+          },
+        });
+      }
+    } catch (notifErr: any) {
+      console.warn("[Order Creation Notification Warning]:", notifErr?.message || notifErr);
+    }
+
     return formatOrderRecord(created);
   },
 
@@ -395,25 +438,69 @@ export const ordersService = {
       .from("orders")
       .update({ status })
       .eq("id", orderId)
-      .select()
+      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*)")
       .single();
 
     if (error) throw new AppError(error.message, 400);
+
+    try {
+      if (updated?.customer_id) {
+        const orderCode = orderId.slice(0, 8).toUpperCase();
+        const tailorShop = updated?.tailor?.shop_name || "Your tailor";
+        const formattedStatus = status.replace(/_/g, " ").toUpperCase();
+
+        await notificationsService.createNotification({
+          userId: updated.customer_id,
+          title: `Order Update: ${formattedStatus}`,
+          message: `${tailorShop} updated order #${orderCode} status to "${status}".`,
+          type: "order",
+          data: {
+            orderId,
+            status,
+          },
+        });
+      }
+    } catch (notifErr: any) {
+      console.warn("[Order Status Notification Warning]:", notifErr?.message || notifErr);
+    }
+
     return updated;
   },
 
-  async cancelOrder(orderId: string, _userId: string | undefined, _userRole: string | undefined) {
+  async cancelOrder(orderId: string, userId: string | undefined, userRole: string | undefined) {
     const client = getDbClient();
     const { data: updated, error } = await client
       .from("orders")
       .update({ status: "cancelled" })
       .eq("id", orderId)
-      .select()
+      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*)")
       .single();
 
     if (error) throw new AppError(error.message, 400);
+
+    try {
+      const orderCode = orderId.slice(0, 8).toUpperCase();
+      // If customer cancelled, notify tailor. If tailor cancelled, notify customer.
+      const notifyUserId = userId === updated?.customer_id ? updated?.tailor?.user_id : updated?.customer_id;
+      if (notifyUserId) {
+        await notificationsService.createNotification({
+          userId: notifyUserId,
+          title: "Order Cancelled",
+          message: `Order #${orderCode} has been cancelled.`,
+          type: "order",
+          data: {
+            orderId,
+            status: "cancelled",
+          },
+        });
+      }
+    } catch (notifErr: any) {
+      console.warn("[Order Cancel Notification Warning]:", notifErr?.message || notifErr);
+    }
+
     return updated;
   },
+
 
   async getOrderInvoice(orderId: string, userId: string | undefined, userRole: string | undefined) {
     const order = await this.getOrderById(orderId, userId, userRole);

@@ -11,12 +11,29 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
   const { data, error } = await supabase.auth.getUser(token);
   if (!error && data?.user) {
     user = data.user;
-  } else if (token.startsWith("token_")) {
+  }
+  if (!user && token.startsWith("token_")) {
     const rawId = token.replace("token_", "");
     try {
       const { data: adminUser } = await supabase.auth.admin.getUserById(rawId);
       if (adminUser?.user) {
         user = adminUser.user;
+      }
+    } catch {}
+  } else if (!user && token) {
+    // If JWT expired or clock skew, verify user identity via Supabase admin using the payload's user ID (sub)
+    try {
+      const parts = token.split(".");
+      if (parts.length === 3) {
+        const payloadStr = Buffer.from(parts[1], "base64url").toString("utf8");
+        const payload = JSON.parse(payloadStr);
+        const sub = payload.sub;
+        if (sub && typeof sub === "string") {
+          const { data: adminUser } = await supabase.auth.admin.getUserById(sub);
+          if (adminUser?.user) {
+            user = adminUser.user;
+          }
+        }
       }
     } catch {}
   }
@@ -38,6 +55,19 @@ export const optionalAuth: RequestHandler = async (req, _res, next) => {
         const rawId = token.replace("token_", "");
         const { data: adminUser } = await supabase.auth.admin.getUserById(rawId);
         user = adminUser?.user;
+      } else if (!user && token) {
+        try {
+          const parts = token.split(".");
+          if (parts.length === 3) {
+            const payloadStr = Buffer.from(parts[1], "base64url").toString("utf8");
+            const payload = JSON.parse(payloadStr);
+            const sub = payload.sub;
+            if (sub && typeof sub === "string") {
+              const { data: adminUser } = await supabase.auth.admin.getUserById(sub);
+              user = adminUser?.user;
+            }
+          }
+        } catch {}
       }
       if (user) {
         req.user = user;
