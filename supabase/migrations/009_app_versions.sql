@@ -17,6 +17,10 @@ CREATE TABLE IF NOT EXISTS public.app_versions (
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.app_versions ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if re-running
+DROP POLICY IF EXISTS "Allow public read access to active app_versions" ON public.app_versions;
+DROP POLICY IF EXISTS "Allow admin full access to app_versions" ON public.app_versions;
+
 -- Allow public read access to active versions (clients check before logging in)
 CREATE POLICY "Allow public read access to active app_versions"
     ON public.app_versions
@@ -28,8 +32,12 @@ CREATE POLICY "Allow admin full access to app_versions"
     ON public.app_versions
     FOR ALL
     USING (
-        auth.jwt() ->> 'role' = 'service_role' OR 
-        auth.jwt() ->> 'email' IN (SELECT email FROM users WHERE role = 'admin')
+        (auth.jwt() ->> 'role') = 'service_role' OR 
+        public.is_admin()
+    )
+    WITH CHECK (
+        (auth.jwt() ->> 'role') = 'service_role' OR 
+        public.is_admin()
     );
 
 -- Fast lookup index
