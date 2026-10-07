@@ -15,10 +15,12 @@ import { paymentsRoutes } from "../modules/payments/payments.routes.js";
 import { notificationsRoutes } from "../modules/notifications/notifications.routes.js";
 import { uploadsRoutes } from "../modules/uploads/uploads.routes.js";
 import { adminRoutes } from "../modules/admin/admin.routes.js";
+import { appVersionRoutes } from "../modules/app-version/app-version.routes.js";
 
 export const apiRoutes = Router();
 
 apiRoutes.use("/auth", authRoutes);
+apiRoutes.use(appVersionRoutes);
 apiRoutes.use(usersRoutes);
 apiRoutes.use(tailorsRoutes);
 apiRoutes.use(appointmentsRoutes);
