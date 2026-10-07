@@ -33,7 +33,7 @@ export const tailorsService = {
     const page = Math.max(1, params.page || 1);
     const limit = Math.min(100, Math.max(1, params.limit || 20));
     const offset = (page - 1) * limit;
-    const radiusMeters = (params.radiusKm || 50) * 1000;
+    const radiusMeters = Math.min(25, params.radiusKm || 25) * 1000;
 
     // Call Supabase PostGIS RPC function
     const { data, error } = await client.rpc("get_nearby_tailors", {
@@ -115,7 +115,7 @@ export const tailorsService = {
       });
     }
 
-    const radiusKm = params.radiusKm || 50;
+    const radiusKm = Math.min(25, params.radiusKm || 25);
     records = records
       .map((t) => {
         const tLat = typeof t.latitude === "number" ? t.latitude : undefined;

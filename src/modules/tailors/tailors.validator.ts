@@ -55,7 +55,7 @@ export const tailorsCompareSchema = z.object({
 export const getNearbyTailorsQuerySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
-  radius: z.coerce.number().positive().max(500).optional(),
+  radius: z.coerce.number().positive().max(50).optional(),
   city: z.string().optional(),
   search: z.string().optional(),
   minRating: z.coerce.number().min(0).max(5).optional(),

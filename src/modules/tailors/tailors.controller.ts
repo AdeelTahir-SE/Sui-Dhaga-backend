@@ -15,7 +15,7 @@ export const getNearbyTailors: RequestHandler = async (req, res) => {
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
   const userLat = Number(req.query.lat);
   const userLng = Number(req.query.lng);
-  const radius = Number(req.query.radius) || 50;
+  const radius = Math.min(25, Math.max(1, Number(req.query.radius) || 25));
   const city = typeof req.query.city === "string" && req.query.city.toLowerCase() !== "all" ? req.query.city : undefined;
   const search = typeof req.query.search === "string" ? req.query.search : typeof req.query.q === "string" ? req.query.q : undefined;
   const minRating = req.query.minRating ? Number(req.query.minRating) : undefined;
@@ -72,7 +72,7 @@ export const getTailorsMap: RequestHandler = async (req, res) => {
   const searchQuery = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : "";
   let userLat = Number(req.query.lat);
   let userLng = Number(req.query.lng);
-  const radius = Number(req.query.radius) || 50;
+  const radius = Math.min(25, Math.max(1, Number(req.query.radius) || 25));
 
   if ((isNaN(userLat) || isNaN(userLng)) && cityQuery && cityQuery !== "all") {
     const baseCoords = CITY_COORDINATES[cityQuery] || CITY_COORDINATES["lahore"];

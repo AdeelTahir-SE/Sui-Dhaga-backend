@@ -33,13 +33,69 @@ export const getUserById: RequestHandler = async (req, res) => {
 };
 
 export const reportUser: RequestHandler = async (req, res) => {
-  const { targetId, reason, details } = req.body;
-  const result = await usersService.reportUser(req.user!.id, targetId, reason, details);
+  const targetId =
+    req.body.targetId ||
+    req.body.target_id ||
+    req.body.targetUserId ||
+    req.body.target_user_id ||
+    req.body.userId;
+  const reason = req.body.reason || req.body.category || "Inappropriate behavior";
+  const details = req.body.details || req.body.description || req.body.note;
+
+  if (!targetId) {
+    throw new AppError("Target user ID is required", 400);
+  }
+
+  const result = await usersService.reportUser(req.user!.id, String(targetId), String(reason), details);
   success(res, result, "Report submitted successfully");
 };
 
 export const blockUser: RequestHandler = async (req, res) => {
-  const { targetId } = req.body;
-  const result = await usersService.blockUser(req.user!.id, targetId);
+  const targetId =
+    req.body.targetId ||
+    req.body.target_id ||
+    req.body.targetUserId ||
+    req.body.target_user_id ||
+    req.body.userId;
+
+  if (!targetId) {
+    throw new AppError("Target user ID is required", 400);
+  }
+
+  const result = await usersService.blockUser(req.user!.id, String(targetId));
   success(res, result, "User blocked successfully");
+};
+
+export const unblockUser: RequestHandler = async (req, res) => {
+  const targetId =
+    req.body.targetId ||
+    req.body.target_id ||
+    req.body.targetUserId ||
+    req.body.target_user_id ||
+    req.body.userId ||
+    req.params.userId;
+
+  if (!targetId) {
+    throw new AppError("Target user ID is required", 400);
+  }
+
+  const result = await usersService.unblockUser(req.user!.id, String(targetId));
+  success(res, result, "User unblocked successfully");
+};
+
+export const getBlockStatus: RequestHandler = async (req, res) => {
+  const targetId = asString(
+    req.params.userId ||
+      req.query.targetId ||
+      req.query.target_id ||
+      req.query.targetUserId
+  );
+
+  const result = await usersService.checkBlockStatus(req.user!.id, targetId);
+  success(res, result, "Block status fetched successfully");
+};
+
+export const getBlockedUsers: RequestHandler = async (req, res) => {
+  const result = await usersService.getBlockedUsers(req.user!.id);
+  success(res, result, "Blocked users fetched successfully");
 };
