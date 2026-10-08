@@ -173,7 +173,7 @@ import * as authController from "./modules/auth/auth.controller.js";
 
 // Google OAuth callback bridge routes (accessible at root and /api/v1 without rate-limiting)
 app.get(
-  ["/auth/google/callback", "/auth/callback", "/api/v1/auth/google/callback", "/api/v1/auth/callback"],
+  ["/auth/google/callback", "/api/v1/auth/google/callback"],
   authController.googleCallback
 );
 

@@ -79,18 +79,7 @@ authRoutes.post("/login", authLimiter, validate(loginSchema), asyncHandler(authC
  */
 authRoutes.post("/logout", requireAuth, asyncHandler(authController.logout));
 
-/**
- * @swagger
- * /auth/me:
- *   get:
- *     summary: Get currently authenticated user session
- *     tags: [Auth]
- *     security: [{ BearerAuth: [] }]
- *     responses:
- *       200:
- *         description: Current user profile and session data
- */
-authRoutes.get("/me", requireAuth, asyncHandler(authController.getMe));
+
 
 /**
  * @swagger
@@ -158,18 +147,7 @@ authRoutes.post("/forgot-password", authLimiter, validate(forgotPasswordSchema),
  */
 authRoutes.post("/reset-password", optionalAuth, authLimiter, validate(resetPasswordSchema), asyncHandler(authController.resetPassword));
 
-/**
- * @swagger
- * /auth/verify-email:
- *   post:
- *     summary: Verify authenticated user's email address
- *     tags: [Auth]
- *     security: [{ BearerAuth: [] }]
- *     responses:
- *       200:
- *         description: Email verification status confirmation
- */
-authRoutes.post("/verify-email", requireAuth, asyncHandler(authController.verifyEmail));
+
 
 /**
  * @swagger

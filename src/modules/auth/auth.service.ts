@@ -392,33 +392,45 @@ export const authService = {
     }
 
     // Check if account completion is required:
-    // If the user already existed in profiles or has completed profile flag,
-    // or already has an established role ("customer" or "tailor"),
-    // they should NEVER be prompted with the tailor/customer role selection screen.
-    const hasCompletedFlag = targetUser.user_metadata?.profile_completed === true;
-    const establishedRole =
-      (profile?.role && profile.role !== "authenticated" ? profile.role : null) ||
-      (targetUser.user_metadata?.role && targetUser.user_metadata.role !== "authenticated" ? targetUser.user_metadata.role : null);
+    // A user is considered an existing user if:
+    // 1. They have explicitly completed profile setup or selected a role (profile_completed or role_selected flag)
+    // 2. OR they already exist as a registered tailor in the tailors table
+    // 3. OR their account was created earlier and has an established phone and explicit role
+    const hasCompletedFlag =
+      targetUser.user_metadata?.profile_completed === true ||
+      targetUser.app_metadata?.profile_completed === true;
 
-    let hasTailor = true;
-    if (profile?.role === "tailor" || targetUser.user_metadata?.role === "tailor") {
-      try {
-        const { data: tailor } = await client
-          .from("tailors")
-          .select("id")
-          .eq("user_id", targetUser.id)
-          .maybeSingle();
-        hasTailor = Boolean(tailor?.id);
-      } catch {}
-    }
+    const hasRoleSelected =
+      targetUser.user_metadata?.role_selected === true ||
+      targetUser.app_metadata?.role_selected === true;
 
-    const isProfileCompleted = Boolean(
+    let hasTailorRecord = false;
+    try {
+      const { data: tailor } = await client
+        .from("tailors")
+        .select("id")
+        .eq("user_id", targetUser.id)
+        .maybeSingle();
+      hasTailorRecord = Boolean(tailor?.id);
+    } catch {}
+
+    const isBrandNewAccount =
+      Math.abs(new Date(targetUser.last_sign_in_at || targetUser.created_at).getTime() - new Date(targetUser.created_at).getTime()) < 30000 ||
+      Date.now() - new Date(targetUser.created_at).getTime() < 60000;
+
+    const isExistingUser = Boolean(
       hasCompletedFlag ||
-      userAlreadyExisted ||
-      (establishedRole && (establishedRole === "customer" || hasTailor))
+      hasRoleSelected ||
+      hasTailorRecord ||
+      (!isBrandNewAccount && Boolean(profile?.phone || targetUser.phone) && Boolean(targetUser.user_metadata?.role))
     );
 
-    const needsProfileCompletion = !isProfileCompleted;
+    const needsProfileCompletion = !isExistingUser;
+
+    const resolvedRole: "customer" | "tailor" =
+      hasTailorRecord || profile?.role === "tailor" || targetUser.user_metadata?.role === "tailor"
+        ? "tailor"
+        : "customer";
 
     // Generate or maintain access token
     let sessionToken = token;
@@ -440,11 +452,12 @@ export const authService = {
         email: targetUser.email || email,
         fullName: profile?.full_name || resolvedName,
         name: profile?.full_name || resolvedName,
-        role: profile?.role || targetUser.user_metadata?.role || "customer",
+        role: resolvedRole,
         phone: profile?.phone || resolvedPhone || undefined,
         avatarUrl: profile?.avatar_url || resolvedAvatar || undefined,
         avatar: profile?.avatar_url || resolvedAvatar || undefined,
-        profileCompleted: !needsProfileCompletion,
+        profileCompleted: isExistingUser,
+        isExistingUser,
       },
       session: {
         access_token: sessionToken,
@@ -452,6 +465,7 @@ export const authService = {
         refresh_token: refreshToken,
         refreshToken: refreshToken,
       },
+      isExistingUser,
       needsProfileCompletion,
     };
   },
@@ -464,6 +478,7 @@ export const authService = {
     // 1. Update Supabase Auth metadata
     const metaUpdates: Record<string, unknown> = {
       role,
+      role_selected: true,
       profile_completed: true,
     };
     if (phone) metaUpdates.phone = phone;
@@ -475,7 +490,7 @@ export const authService = {
     try {
       await client.auth.admin.updateUserById(userId, {
         user_metadata: metaUpdates,
-        app_metadata: { role },
+        app_metadata: { role, role_selected: true, profile_completed: true },
       });
     } catch (metaErr) {
       console.warn("Notice: updateUserById error in completeProfile:", metaErr);
@@ -530,8 +545,11 @@ export const authService = {
         avatarUrl: updatedProfile.avatar_url,
         avatar: updatedProfile.avatar_url,
         profileCompleted: true,
+        isExistingUser: true,
       },
       profile: updatedProfile,
+      isExistingUser: true,
+      needsProfileCompletion: false,
       message: "Profile completed successfully",
     };
   },
