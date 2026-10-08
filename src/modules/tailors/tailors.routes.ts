@@ -12,6 +12,7 @@ import {
   addGalleryImageSchema,
   tailorServiceSchema,
   tailorAvailabilitySchema,
+  tailorAvailabilitySlotSchema,
   tailorsCompareSchema,
 } from "./tailors.validator.js";
 
@@ -293,6 +294,7 @@ tailorsRoutes.delete("/tailors/:tailorId/services/:serviceId", requireAuth, requ
  */
 tailorsRoutes.get("/tailors/:tailorId/availability", asyncHandler(tailorsController.getTailorAvailability));
 tailorsRoutes.post("/tailors/:tailorId/availability", requireAuth, requireRole("tailor", "admin"), validate(tailorAvailabilitySchema), asyncHandler(tailorsController.addTailorAvailability));
+tailorsRoutes.put("/tailors/:tailorId/availability", requireAuth, requireRole("tailor", "admin"), validate(tailorAvailabilitySchema), asyncHandler(tailorsController.setTailorAvailability));
 
 /**
  * @swagger
@@ -322,7 +324,7 @@ tailorsRoutes.post("/tailors/:tailorId/availability", requireAuth, requireRole("
  *       200:
  *         description: Slot deleted
  */
-tailorsRoutes.patch("/availability/:slotId", requireAuth, requireRole("tailor", "admin"), validate(tailorAvailabilitySchema.partial()), asyncHandler(tailorsController.updateAvailabilitySlot));
+tailorsRoutes.patch("/availability/:slotId", requireAuth, requireRole("tailor", "admin"), validate(tailorAvailabilitySlotSchema.partial()), asyncHandler(tailorsController.updateAvailabilitySlot));
 tailorsRoutes.delete("/availability/:slotId", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.deleteAvailabilitySlot));
 
 /**

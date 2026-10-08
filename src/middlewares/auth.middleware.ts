@@ -41,7 +41,16 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
   if (!user) return next(new AppError("Invalid or expired access token", 401));
 
   req.user = user;
-  req.userRole = user.app_metadata?.role ?? user.user_metadata?.role ?? "customer";
+  let detectedRole = user.app_metadata?.role ?? user.user_metadata?.role;
+  if (!detectedRole || detectedRole === "customer") {
+    try {
+      const { data: prof } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+      if (prof?.role) {
+        detectedRole = prof.role;
+      }
+    } catch {}
+  }
+  req.userRole = detectedRole ?? "customer";
   next();
 };
 

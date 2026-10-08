@@ -41,12 +41,37 @@ export const tailorServiceSchema = z.object({
   category: z.string().optional(),
 });
 
-export const tailorAvailabilitySchema = z.object({
-  dayOfWeek: z.string().min(1),
-  startTime: z.string().min(1),
-  endTime: z.string().min(1),
-  isAvailable: z.boolean().default(true),
+export const tailorAvailabilitySlotSchema = z.object({
+  id: z.string().optional(),
+  dayOfWeek: z.string().optional(),
+  day_of_week: z.string().optional(),
+  day: z.string().optional(),
+  startTime: z.string().optional(),
+  start_time: z.string().optional(),
+  openTime: z.string().optional(),
+  endTime: z.string().optional(),
+  end_time: z.string().optional(),
+  closeTime: z.string().optional(),
+  isAvailable: z.boolean().optional(),
+  is_available: z.boolean().optional(),
+  isOpen: z.boolean().optional(),
+  hasBreak: z.boolean().optional(),
+  has_break: z.boolean().optional(),
+  breakStart: z.string().optional(),
+  break_start: z.string().optional(),
+  breakEnd: z.string().optional(),
+  break_end: z.string().optional(),
 });
+
+export const tailorAvailabilitySchema = z.union([
+  tailorAvailabilitySlotSchema,
+  z.array(tailorAvailabilitySlotSchema),
+  z.object({
+    slots: z.array(tailorAvailabilitySlotSchema).optional(),
+    timings: z.array(tailorAvailabilitySlotSchema).optional(),
+    dayTimings: z.array(tailorAvailabilitySlotSchema).optional(),
+  }),
+]);
 
 export const tailorsCompareSchema = z.object({
   tailorIds: z.array(z.string()).min(2),

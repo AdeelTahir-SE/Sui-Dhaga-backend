@@ -185,7 +185,7 @@ export const tailorsService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("tailors")
-      .select("id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address), services:tailor_services(id, title, price, description, category, is_active), availability:tailor_availability(id, day_of_week, start_time, end_time, is_available), gallery:tailor_gallery(id, image_url, caption, display_order), reviews(id, rating, comment, images, created_at, customer:profiles!customer_id(id, full_name, avatar_url))")
+      .select("id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address), services:tailor_services(id, title, price, description, category, is_active), availability:tailor_availability(*), gallery:tailor_gallery(id, image_url, caption, display_order), reviews(id, rating, comment, images, created_at, customer:profiles!customer_id(id, full_name, avatar_url))")
       .eq("id", tailorId)
       .single();
 
@@ -290,26 +290,149 @@ export const tailorsService = {
 
   async getTailorAvailability(tailorId: string) {
     const client = getDbClient();
+
+    // Resolve real tailor_id if a user_id was passed
+    let effectiveTailorId = tailorId;
+    try {
+      const { data: tailorRow } = await client
+        .from("tailors")
+        .select("id")
+        .or(`id.eq.${tailorId},user_id.eq.${tailorId}`)
+        .maybeSingle();
+      if (tailorRow?.id) {
+        effectiveTailorId = tailorRow.id;
+      }
+    } catch {}
+
     const { data, error } = await client
       .from("tailor_availability")
       .select("*")
-      .eq("tailor_id", tailorId);
+      .eq("tailor_id", effectiveTailorId);
 
     if (error) throw new AppError(error.message, 400);
-    return data ?? [];
+
+    const DAY_ORDER: Record<string, number> = {
+      Monday: 1,
+      Tuesday: 2,
+      Wednesday: 3,
+      Thursday: 4,
+      Friday: 5,
+      Saturday: 6,
+      Sunday: 7,
+    };
+
+    const sorted = (data ?? []).sort((a: any, b: any) => {
+      const orderA = DAY_ORDER[a.day_of_week] || 99;
+      const orderB = DAY_ORDER[b.day_of_week] || 99;
+      return orderA - orderB;
+    });
+
+    return sorted;
   },
 
-  async addTailorAvailability(tailorId: string, _userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
+  async setTailorAvailability(
+    tailorId: string,
+    _userId: string | undefined,
+    _userRole: string | undefined,
+    data: any
+  ) {
     const client = getDbClient();
-    const mapped = toSnakeCase(data);
-    const { data: created, error } = await client
+
+    // Resolve effective tailor ID
+    let effectiveTailorId = tailorId;
+    try {
+      const { data: tailorRow } = await client
+        .from("tailors")
+        .select("id")
+        .or(`id.eq.${tailorId},user_id.eq.${tailorId}`)
+        .maybeSingle();
+      if (tailorRow?.id) {
+        effectiveTailorId = tailorRow.id;
+      }
+    } catch {}
+
+    const rawSlots: any[] = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.slots)
+      ? data.slots
+      : Array.isArray(data?.timings)
+      ? data.timings
+      : Array.isArray(data?.dayTimings)
+      ? data.dayTimings
+      : [data];
+
+    if (!rawSlots.length || !rawSlots[0]) {
+      return [];
+    }
+
+    // If multiple days provided (batch schedule), clear previous schedule for clean replacement
+    if (rawSlots.length > 1) {
+      await client
+        .from("tailor_availability")
+        .delete()
+        .eq("tailor_id", effectiveTailorId);
+    }
+
+    const rowsToInsert = rawSlots.map((s) => {
+      const day = s.dayOfWeek || s.day_of_week || s.day || "Monday";
+      const start = s.startTime || s.start_time || s.openTime || s.open_time || "09:00 AM";
+      const end = s.endTime || s.end_time || s.closeTime || s.close_time || "08:00 PM";
+      const available =
+        s.isAvailable !== undefined
+          ? Boolean(s.isAvailable)
+          : s.isOpen !== undefined
+          ? Boolean(s.isOpen)
+          : true;
+      const hasBreak = Boolean(s.hasBreak || s.has_break);
+      const breakStart = s.breakStart || s.break_start || null;
+      const breakEnd = s.breakEnd || s.break_end || null;
+
+      return {
+        tailor_id: effectiveTailorId,
+        day_of_week: day,
+        start_time: start,
+        end_time: end,
+        is_available: available,
+        has_break: hasBreak,
+        break_start: breakStart,
+        break_end: breakEnd,
+      };
+    });
+
+    if (rawSlots.length === 1) {
+      // Clear previous slot for this single day
+      await client
+        .from("tailor_availability")
+        .delete()
+        .eq("tailor_id", effectiveTailorId)
+        .eq("day_of_week", rowsToInsert[0].day_of_week);
+    }
+
+    // Try inserting with break columns first
+    let { data: inserted, error } = await client
       .from("tailor_availability")
-      .insert({ ...mapped, tailor_id: tailorId })
-      .select()
-      .single();
+      .insert(rowsToInsert)
+      .select();
+
+    // Fallback if break columns do not exist yet in database
+    if (error && error.message && error.message.includes("does not exist")) {
+      const basicRows = rowsToInsert.map(({ has_break, break_start, break_end, ...rest }: any) => rest);
+      const retry = await client
+        .from("tailor_availability")
+        .insert(basicRows)
+        .select();
+      inserted = retry.data;
+      error = retry.error;
+    }
 
     if (error) throw new AppError(error.message, 400);
-    return created;
+
+    this.invalidateTailorCache(effectiveTailorId);
+    return inserted ?? [];
+  },
+
+  async addTailorAvailability(tailorId: string, userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>) {
+    return this.setTailorAvailability(tailorId, userId, userRole, data);
   },
 
   async updateAvailabilitySlot(slotId: string, _userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {

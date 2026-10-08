@@ -220,7 +220,12 @@ export const deleteTailorService: RequestHandler = async (req, res) => {
 
 export const addTailorAvailability: RequestHandler = async (req, res) => {
   const created = await tailorsService.addTailorAvailability(asString(req.params.tailorId), req.user?.id, req.userRole, req.body);
-  success(res, created, "Availability slot created successfully", 201);
+  success(res, created, "Availability schedule saved successfully", 201);
+};
+
+export const setTailorAvailability: RequestHandler = async (req, res) => {
+  const updated = await tailorsService.setTailorAvailability(asString(req.params.tailorId), req.user?.id, req.userRole, req.body);
+  success(res, updated, "Availability schedule updated successfully");
 };
 
 export const updateAvailabilitySlot: RequestHandler = async (req, res) => {
