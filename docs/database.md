@@ -83,6 +83,7 @@ erDiagram
 ## 4. SQL Migrations & Development
 
 - All schema definitions are stored in [`supabase/migrations/001_initial_schema.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/migrations/001_initial_schema.sql).
+- Schema optimizations, index pruning, and cleanup are managed via [`supabase/migrations/012_database_optimization.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/migrations/012_database_optimization.sql).
 - Row Level Security policies are maintained in [`supabase/policies/rls-policies.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/policies/rls-policies.sql).
 - Seed data for development is located in [`supabase/seed/seed.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/seed/seed.sql).
 - Storage buckets configuration is located in [`supabase/storage/buckets.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/storage/buckets.sql).

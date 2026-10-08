@@ -49,7 +49,6 @@ export const adminService = {
     const { data, error } = await client
       .from("profiles")
       .update({
-        is_blocked: blocked,
         status: blocked ? "blocked" : "active",
       })
       .eq("id", userId)

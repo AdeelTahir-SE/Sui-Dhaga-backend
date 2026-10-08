@@ -10,10 +10,10 @@ values
 on conflict (id) do update set full_name = excluded.full_name;
 
 -- 2. Sample Tailor Profiles
-insert into public.tailors (id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, verification_status, verified, latitude, longitude)
+insert into public.tailors (id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, verification_status, verified, latitude, longitude, organization_name)
 values 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 'Royal Heritage Tailors', array['bridal', 'lehenga', 'sherwani', 'formal-wear'], 'Lahore', 'Shop 12, Anarkali Bazaar', 22, 'Master artisans in hand embroidery and bespoke bridal wear.', 4.9, 38, 'verified', true, 31.5714, 74.3087),
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '33333333-3333-3333-3333-333333333333', 'Zainab Haute Couture', array['kurta', 'shalwar-kameez', 'casual-wear', 'western-fusion'], 'Islamabad', 'Plaza 4, F-7 Markaz', 8, 'Modern tailoring for contemporary women and men.', 4.7, 19, 'verified', true, 33.7215, 73.0563)
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 'Royal Heritage Tailors', array['bridal', 'lehenga', 'sherwani', 'formal-wear'], 'Lahore', 'Shop 12, Anarkali Bazaar', 22, 'Master artisans in hand embroidery and bespoke bridal wear.', 4.9, 38, 'verified', true, 31.5714, 74.3087, 'sundrop'),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '33333333-3333-3333-3333-333333333333', 'Zainab Haute Couture', array['kurta', 'shalwar-kameez', 'casual-wear', 'western-fusion'], 'Islamabad', 'Plaza 4, F-7 Markaz', 8, 'Modern tailoring for contemporary women and men.', 4.7, 19, 'verified', true, 33.7215, 73.0563, null)
 on conflict (id) do nothing;
 
 -- 3. Tailor Services

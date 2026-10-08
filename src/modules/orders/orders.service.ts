@@ -340,8 +340,7 @@ export const ordersService = {
 
     const totalAmount = Number(data.totalAmount ?? data.total_amount ?? data.price ?? data.amount ?? 0);
     const itemName = (data.itemName ?? data.item_name) as string | undefined;
-    const notes = (data.notes as string | undefined) ?? null;
-    const additionalNotes = (data.additionalNotes ?? data.additional_notes) as string | undefined ?? null;
+    const additionalNotes = (data.additionalNotes ?? data.additional_notes ?? data.notes) as string | undefined ?? null;
     const deliveryDate = (data.deliveryDate ?? data.delivery_date) as string | undefined ?? null;
     const designImages = (data.designImages ?? data.design_images ?? []) as string[];
     const measurements = (data.measurements ?? {}) as Record<string, unknown>;
@@ -353,7 +352,6 @@ export const ordersService = {
       customer_id: userId,
       tailor_id: tailorId,
       total_amount: totalAmount,
-      notes,
       additional_notes: additionalNotes,
       item_name: itemName ?? null,
       design_images: Array.isArray(designImages) ? designImages : [],
