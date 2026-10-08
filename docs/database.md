@@ -62,28 +62,28 @@ erDiagram
 | `tailor_gallery` | Portfolio & showroom gallery images | `id`, `tailor_id` (FK -> tailors), `image_url`, `caption`, `display_order` |
 | `measurements` | Customer custom body measurements | `id`, `user_id` (FK -> profiles), `unit`, `chest`, `waist`, `hips`, `shoulder`, etc. |
 | `designs` | AI generated & custom studio designs | `id`, `user_id` (FK -> profiles), `prompt`, `image_url`, `colors`, `fabric`, `pdf_url` |
-| `fabrics` | Fabric catalog & pricing | `id`, `name`, `material`, `price_per_meter`, `color`, `in_stock` |
 | `appointments` | Tailor booking appointments | `id`, `customer_id` (FK), `tailor_id` (FK), `service_id` (FK), `status`, `appointment_date` |
 | `orders` | Custom tailoring orders | `id`, `customer_id` (FK), `tailor_id` (FK), `design_id` (FK), `measurement_id` (FK), `total_amount`, `status` |
 | `order_tracking` | Real-time order progress timeline | `id`, `order_id` (FK -> orders), `status`, `description`, `location` |
 | `conversations` | 1-on-1 direct chat threads | `id`, `participant1_id` (FK), `participant2_id` (FK), `last_message`, `last_message_at` |
 | `messages` | Chat messages & attachments | `id`, `conversation_id` (FK), `sender_id` (FK), `text`, `attachments`, `is_read` |
 | `reviews` | Tailor & order ratings & reviews | `id`, `order_id` (FK), `tailor_id` (FK), `customer_id` (FK), `rating`, `comment` |
-| `wishlist_items` | Customer saved designs & tailors | `id`, `user_id` (FK), `item_type`, `tailor_id` (FK), `design_id` (FK) |
 | `payments` | Checkout sessions & transactions | `id`, `order_id` (FK), `user_id` (FK), `amount`, `provider`, `status`, `transaction_id` |
-| `notifications` | User notifications & alerts | `id`, `user_id` (FK), `title`, `message`, `type`, `is_read`, `data` |
+| `notifications` | User alerts and notifications | `id`, `user_id` (FK), `title`, `message`, `type`, `is_read`, `data` |
 | `community_posts` | Feed posts & style showcases | `id`, `user_id` (FK), `title`, `content`, `images`, `tags`, `likes_count` |
 | `community_comments` | Comments on community posts | `id`, `post_id` (FK), `user_id` (FK), `content` |
 | `community_likes` | Post likes junction | `(post_id, user_id)` PK |
 | `community_saves` | Post bookmarks junction | `(post_id, user_id)` PK |
 | `reports` | Moderation & user reports | `id`, `reporter_id` (FK), `target_type`, `target_id`, `reason`, `status` |
+| `app_versions` | In-app version control & forced updates | `id`, `platform`, `latest_version`, `min_version`, `download_url`, `force_update` |
+| `user_blocks` | Peer-to-peer user blocks | `id`, `blocker_id` (FK), `blocked_id` (FK), `reason` |
 
 ---
 
 ## 4. SQL Migrations & Development
 
 - All schema definitions are stored in [`supabase/migrations/001_initial_schema.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/migrations/001_initial_schema.sql).
-- Schema optimizations, index pruning, and cleanup are managed via [`supabase/migrations/012_database_optimization.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/migrations/012_database_optimization.sql).
+- Schema optimizations, index pruning, and cleanup are managed via [`supabase/migrations/013_database_optimization.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/migrations/013_database_optimization.sql).
 - Row Level Security policies are maintained in [`supabase/policies/rls-policies.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/policies/rls-policies.sql).
 - Seed data for development is located in [`supabase/seed/seed.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/seed/seed.sql).
 - Storage buckets configuration is located in [`supabase/storage/buckets.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/storage/buckets.sql).

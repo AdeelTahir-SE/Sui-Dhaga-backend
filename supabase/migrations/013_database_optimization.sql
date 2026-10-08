@@ -1,6 +1,6 @@
 -- ============================================================================
 -- Sui Dhaga Relational Database Schema Optimization
--- Supabase PostgreSQL Migration: 012_database_optimization.sql
+-- Supabase PostgreSQL Migration: 013_database_optimization.sql
 -- Description:
 --   1. Data consolidation & removal of redundant columns:
 --      - orders.notes (consolidated into orders.additional_notes)
