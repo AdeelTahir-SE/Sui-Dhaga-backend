@@ -8,6 +8,11 @@ export const getTailorReviews: RequestHandler = async (req, res) => {
   success(res, reviews, "Reviews fetched successfully");
 };
 
+export const getOrderReview: RequestHandler = async (req, res) => {
+  const review = await reviewsService.getOrderReview(asString(req.params.orderId));
+  success(res, review, "Order review fetched successfully");
+};
+
 export const createOrderReview: RequestHandler = async (req, res) => {
   const created = await reviewsService.createOrderReview(asString(req.params.orderId), req.user?.id, req.userRole, req.body);
   success(res, created, "Review submitted successfully", 201);

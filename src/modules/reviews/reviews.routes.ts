@@ -24,6 +24,7 @@ export const reviewsRoutes = Router();
  *         description: List of reviews retrieved successfully
  */
 reviewsRoutes.get("/tailors/:tailorId/reviews", asyncHandler(reviewsController.getTailorReviews));
+reviewsRoutes.get("/orders/:orderId/review", requireAuth, asyncHandler(reviewsController.getOrderReview));
 
 /**
  * @openapi

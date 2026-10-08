@@ -13,6 +13,7 @@ import { apiRoutes } from "./routes/index.js";
 export const app = express();
 
 app.set("trust proxy", 1);
+app.set("etag", "strong");
 
 // Middleware
 app.use(
@@ -178,7 +179,11 @@ app.get(
   authController.googleCallback
 );
 
-// API Routes with Rate Limiting
+// API Routes with Rate Limiting and Dynamic Freshness Headers
+app.use("/api/v1", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-cache, must-revalidate");
+  next();
+});
 app.use("/api/v1", apiLimiter, apiRoutes);
 
 // Fallback Handlers

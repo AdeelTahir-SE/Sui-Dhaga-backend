@@ -5,11 +5,23 @@ import {
   deleteTableData,
 } from "../../utils/resource-helper.js";
 import { storageService } from "../../services/storage.service.js";
+import { cacheService } from "../../services/cache.service.js";
 import { AppError } from "../../utils/app-error.js";
 
 export const tailorsService = {
+  invalidateTailorCache(tailorId?: string) {
+    if (tailorId) {
+      cacheService.del(`tailor:${tailorId}`);
+    }
+    cacheService.delByPattern("tailors:*");
+  },
+
   async getTailors(page = 1, limit = 20) {
-    return fetchTableData({
+    const cacheKey = `tailors:list:${page}:${limit}`;
+    const cached = cacheService.get<any>(cacheKey);
+    if (cached) return cached;
+
+    const result = await fetchTableData({
       table: "tailors",
       select: "*, profile:profiles(*)",
       page,
@@ -17,6 +29,9 @@ export const tailorsService = {
       orderColumn: "rating",
       ascending: false,
     });
+
+    cacheService.set(cacheKey, result, 60);
+    return result;
   },
 
   async getNearbyTailors(params: {
@@ -29,6 +44,10 @@ export const tailorsService = {
     page?: number;
     limit?: number;
   }) {
+    const cacheKey = `tailors:nearby:${JSON.stringify(params)}`;
+    const cached = cacheService.get<any>(cacheKey);
+    if (cached) return cached;
+
     const client = getDbClient();
     const page = Math.max(1, params.page || 1);
     const limit = Math.min(100, Math.max(1, params.limit || 20));
@@ -70,12 +89,14 @@ export const tailorsService = {
       };
     });
 
-    return {
+    const result = {
       records,
       total: records.length,
       page,
       limit,
     };
+    cacheService.set(cacheKey, result, 60);
+    return result;
   },
 
   async fallbackNearbyTailors(
@@ -159,6 +180,10 @@ export const tailorsService = {
   },
 
   async getTailorById(tailorId: string) {
+    const cacheKey = `tailor:${tailorId}`;
+    const cached = cacheService.get<any>(cacheKey);
+    if (cached) return cached;
+
     const client = getDbClient();
     const { data, error } = await client
       .from("tailors")
@@ -168,6 +193,9 @@ export const tailorsService = {
 
     if (error && error.code !== "PGRST116") {
       throw new AppError(error.message, 400);
+    }
+    if (data) {
+      cacheService.set(cacheKey, data, 60);
     }
     return data;
   },
@@ -183,6 +211,7 @@ export const tailorsService = {
       .single();
 
     if (error) throw new AppError(error.message, 400);
+    this.invalidateTailorCache();
     return created;
   },
 
@@ -197,16 +226,19 @@ export const tailorsService = {
 
     const { data: updated, error } = await query.select().single();
     if (error) throw new AppError(error.message, 400);
+    this.invalidateTailorCache(tailorId);
     return updated;
   },
 
   async deleteTailor(tailorId: string, userId: string | undefined, userRole: string | undefined) {
-    return deleteTableData({
+    const res = await deleteTableData({
       table: "tailors",
       id: tailorId,
       userId,
       userRole,
     });
+    this.invalidateTailorCache(tailorId);
+    return res;
   },
 
   async getTailorServices(tailorId: string) {
@@ -231,6 +263,7 @@ export const tailorsService = {
       .single();
 
     if (error) throw new AppError(error.message, 400);
+    this.invalidateTailorCache(tailorId);
     return created;
   },
 
@@ -245,6 +278,7 @@ export const tailorsService = {
       .single();
 
     if (error) throw new AppError(error.message, 400);
+    this.invalidateTailorCache();
     return updated;
   },
 
@@ -252,6 +286,7 @@ export const tailorsService = {
     const client = getDbClient();
     const { error } = await client.from("tailor_services").delete().eq("id", serviceId);
     if (error) throw new AppError(error.message, 400);
+    this.invalidateTailorCache();
     return true;
   },
 
@@ -329,9 +364,11 @@ export const tailorsService = {
         .select()
         .single();
       if (tailorError) throw new AppError(error.message, 400);
+      this.invalidateTailorCache(tailorId);
       return tailor;
     }
 
+    this.invalidateTailorCache(tailorId);
     return created;
   },
 
@@ -362,6 +399,7 @@ export const tailorsService = {
       .single();
 
     if (error) throw new AppError(error.message, 400);
+    this.invalidateTailorCache(tailorId);
     return updated;
   },
 
@@ -391,6 +429,7 @@ export const tailorsService = {
 
     const { data: updated, error } = await query.select().single();
     if (error) throw new AppError(error.message, 400);
+    this.invalidateTailorCache(tailorId);
     return updated;
   },
 

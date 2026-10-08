@@ -245,24 +245,49 @@ export const communityService = {
     const client = getDbClient();
     const { data: existing } = await client
       .from("community_likes")
-      .select("*")
+      .select("post_id")
       .eq("post_id", postId)
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
+    let liked = false;
     if (existing) {
       await client.from("community_likes").delete().eq("post_id", postId).eq("user_id", userId);
-      const { data: post } = await client.from("community_posts").select("likes_count").eq("id", postId).single();
-      const count = Math.max(0, (post?.likes_count ?? 1) - 1);
-      const { data: updated } = await client.from("community_posts").update({ likes_count: count }).eq("id", postId).select().single();
-      return { liked: false, post: updated ? { ...updated, is_liked: false } : null };
+      liked = false;
     } else {
-      await client.from("community_likes").insert({ post_id: postId, user_id: userId });
-      const { data: post } = await client.from("community_posts").select("likes_count").eq("id", postId).single();
-      const count = (post?.likes_count ?? 0) + 1;
-      const { data: updated } = await client.from("community_posts").update({ likes_count: count }).eq("id", postId).select().single();
-      return { liked: true, post: updated ? { ...updated, is_liked: true } : null };
+      const { error: insertError } = await client.from("community_likes").insert({ post_id: postId, user_id: userId });
+      if (insertError && insertError.code !== "23505") {
+        throw new AppError(insertError.message, 400);
+      }
+      liked = true;
     }
+
+    // Always calculate exact row count from community_likes to prevent count drift or race conditions
+    const { count: actualLikesCount } = await client
+      .from("community_likes")
+      .select("*", { count: "exact", head: true })
+      .eq("post_id", postId);
+
+    const safeLikesCount = actualLikesCount ?? 0;
+    const { data: updated } = await client
+      .from("community_posts")
+      .update({ likes_count: safeLikesCount })
+      .eq("id", postId)
+      .select()
+      .maybeSingle();
+
+    return {
+      liked,
+      post: updated
+        ? {
+            ...updated,
+            likes_count: safeLikesCount,
+            likesCount: safeLikesCount,
+            is_liked: liked,
+            isLiked: liked,
+          }
+        : null,
+    };
   },
 
   async toggleSave(postId: string, userId: string | undefined, _userRole: string | undefined) {
@@ -270,24 +295,48 @@ export const communityService = {
     const client = getDbClient();
     const { data: existing } = await client
       .from("community_saves")
-      .select("*")
+      .select("post_id")
       .eq("post_id", postId)
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
+    let saved = false;
     if (existing) {
       await client.from("community_saves").delete().eq("post_id", postId).eq("user_id", userId);
-      const { data: post } = await client.from("community_posts").select("saves_count").eq("id", postId).single();
-      const count = Math.max(0, (post?.saves_count ?? 1) - 1);
-      const { data: updated } = await client.from("community_posts").update({ saves_count: count }).eq("id", postId).select().single();
-      return { saved: false, post: updated ? { ...updated, is_saved: false } : null };
+      saved = false;
     } else {
-      await client.from("community_saves").insert({ post_id: postId, user_id: userId });
-      const { data: post } = await client.from("community_posts").select("saves_count").eq("id", postId).single();
-      const count = (post?.saves_count ?? 0) + 1;
-      const { data: updated } = await client.from("community_posts").update({ saves_count: count }).eq("id", postId).select().single();
-      return { saved: true, post: updated ? { ...updated, is_saved: true } : null };
+      const { error: insertError } = await client.from("community_saves").insert({ post_id: postId, user_id: userId });
+      if (insertError && insertError.code !== "23505") {
+        throw new AppError(insertError.message, 400);
+      }
+      saved = true;
     }
+
+    const { count: actualSavesCount } = await client
+      .from("community_saves")
+      .select("*", { count: "exact", head: true })
+      .eq("post_id", postId);
+
+    const safeSavesCount = actualSavesCount ?? 0;
+    const { data: updated } = await client
+      .from("community_posts")
+      .update({ saves_count: safeSavesCount })
+      .eq("id", postId)
+      .select()
+      .maybeSingle();
+
+    return {
+      saved,
+      post: updated
+        ? {
+            ...updated,
+            saves_count: safeSavesCount,
+            savesCount: safeSavesCount,
+            is_saved: saved,
+            isSaved: saved,
+          }
+        : null,
+    };
   },
 
   async getComments(postId: string) {
@@ -320,11 +369,17 @@ export const communityService = {
 
     if (error) throw new AppError(error.message, 400);
 
-    // Update comments_count in community_posts
+    // Sync comments_count in community_posts using exact count from community_comments to avoid double-counting
     try {
-      const { data: post } = await client.from("community_posts").select("comments_count").eq("id", postId).single();
-      const count = (post?.comments_count ?? 0) + 1;
-      await client.from("community_posts").update({ comments_count: count }).eq("id", postId);
+      const { count: actualCommentsCount } = await client
+        .from("community_comments")
+        .select("*", { count: "exact", head: true })
+        .eq("post_id", postId);
+
+      const safeCount = actualCommentsCount ?? 1;
+      await client.from("community_posts").update({ comments_count: safeCount }).eq("id", postId);
+      (created as any).comments_count = safeCount;
+      (created as any).commentsCount = safeCount;
     } catch {
       // Trigger handles or ignore
     }
