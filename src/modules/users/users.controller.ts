@@ -84,12 +84,13 @@ export const unblockUser: RequestHandler = async (req, res) => {
 };
 
 export const getBlockStatus: RequestHandler = async (req, res) => {
-  const targetId = asString(
+  const rawTarget =
     req.params.userId ||
-      req.query.targetId ||
-      req.query.target_id ||
-      req.query.targetUserId
-  );
+    (typeof req.query.targetId === "string" ? req.query.targetId : undefined) ||
+    (typeof req.query.target_id === "string" ? req.query.target_id : undefined) ||
+    (typeof req.query.targetUserId === "string" ? req.query.targetUserId : undefined);
+
+  const targetId = asString(rawTarget);
 
   const result = await usersService.checkBlockStatus(req.user!.id, targetId);
   success(res, result, "Block status fetched successfully");
