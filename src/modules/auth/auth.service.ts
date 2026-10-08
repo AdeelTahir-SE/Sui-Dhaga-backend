@@ -67,16 +67,9 @@ export const authService = {
       } catch {}
     }
 
-    const hasPhone = Boolean(profile?.phone || data.user.phone || data.user.user_metadata?.phone);
-    const hasRoleSet = Boolean(profile?.role && profile.role !== "authenticated");
-    const isProfileCompleted = Boolean(
-      profile &&
-      hasPhone &&
-      hasRoleSet &&
-      hasTailor
-    );
-
-    const needsProfileCompletion = !isProfileCompleted;
+    const isProfileCompleted = true;
+    const isExistingUser = true;
+    const needsProfileCompletion = false;
 
     const resolvedName =
       profile?.full_name ||
@@ -96,10 +89,12 @@ export const authService = {
         avatarUrl: profile?.avatar_url || data.user.user_metadata?.avatar_url || undefined,
         avatar: profile?.avatar_url || data.user.user_metadata?.avatar_url || undefined,
         profileCompleted: isProfileCompleted,
+        isExistingUser: true,
       },
       profile,
       session: data.session,
-      needsProfileCompletion,
+      isExistingUser: true,
+      needsProfileCompletion: false,
     };
   },
 
@@ -414,17 +409,22 @@ export const authService = {
       hasTailorRecord = Boolean(tailor?.id);
     } catch {}
 
-    const isBrandNewAccount =
-      Math.abs(new Date(targetUser.last_sign_in_at || targetUser.created_at).getTime() - new Date(targetUser.created_at).getTime()) < 30000 ||
-      Date.now() - new Date(targetUser.created_at).getTime() < 60000;
+    const createdAtMs = new Date(targetUser.created_at).getTime();
+    const lastSignInMs = targetUser.last_sign_in_at
+      ? new Date(targetUser.last_sign_in_at).getTime()
+      : createdAtMs;
+    const nowMs = Date.now();
 
-    const isExistingUser = Boolean(
-      hasCompletedFlag ||
-      hasRoleSelected ||
-      hasTailorRecord ||
-      (!isBrandNewAccount && Boolean(profile?.phone || targetUser.phone) && Boolean(targetUser.user_metadata?.role))
-    );
+    // A user is strictly considered brand new if their account was created just now (< 45s),
+    // has no prior sign-ins, has no tailor record, and has no completed profile / role flag.
+    const isBrandNewGoogleAccount =
+      !hasCompletedFlag &&
+      !hasRoleSelected &&
+      !hasTailorRecord &&
+      Math.abs(lastSignInMs - createdAtMs) < 15000 &&
+      (nowMs - createdAtMs) < 45000;
 
+    const isExistingUser = !isBrandNewGoogleAccount;
     const needsProfileCompletion = !isExistingUser;
 
     const resolvedRole: "customer" | "tailor" =

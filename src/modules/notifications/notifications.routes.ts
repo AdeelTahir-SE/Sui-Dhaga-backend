@@ -49,22 +49,8 @@ notificationsRoutes.post("/notifications/push-token", requireAuth, asyncHandler(
 
 /**
  * @openapi
- * /notifications:
- *   post:
- *     summary: Create a notification (admin or system)
- *     tags: [Notifications]
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       201:
- *         description: Notification created successfully
- */
-notificationsRoutes.post("/notifications", requireAuth, asyncHandler(notificationsController.createNotification));
-
-/**
- * @openapi
  * /notifications/read-all:
- *   patch:
+ *   post:
  *     summary: Mark all notifications as read
  *     tags: [Notifications]
  *     security:
@@ -73,7 +59,6 @@ notificationsRoutes.post("/notifications", requireAuth, asyncHandler(notificatio
  *       200:
  *         description: All notifications marked as read
  */
-notificationsRoutes.patch("/notifications/read-all", requireAuth, asyncHandler(notificationsController.markAllAsRead));
 notificationsRoutes.post("/notifications/read-all", requireAuth, asyncHandler(notificationsController.markAllAsRead));
 
 /**

@@ -141,6 +141,5 @@ measurementsRoutes.post("/measurements", requireAuth, requireRole("customer", "a
  *         description: Measurement profile deleted successfully
  */
 measurementsRoutes.get("/measurements/:measurementId", ...measurementAuth, asyncHandler(measurementsController.getMeasurementById));
-measurementsRoutes.patch("/measurements/:measurementId", ...measurementAuth, validate(updateMeasurementSchema), asyncHandler(measurementsController.updateMeasurement));
 measurementsRoutes.put("/measurements/:measurementId", ...measurementAuth, validate(updateMeasurementSchema), asyncHandler(measurementsController.updateMeasurement));
 measurementsRoutes.delete("/measurements/:measurementId", ...measurementAuth, asyncHandler(measurementsController.deleteMeasurement));

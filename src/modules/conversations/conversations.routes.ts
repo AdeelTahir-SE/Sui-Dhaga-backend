@@ -178,7 +178,6 @@ conversationsRoutes.post("/conversations/:tailorId/:clientId/messages", requireA
  *         description: Conversation existence status and data
  */
 conversationsRoutes.get("/conversations/:tailorId/:clientId", requireAuth, asyncHandler(conversationsController.checkConversationExists));
-conversationsRoutes.get("/conversation/:tailorId/:clientId", requireAuth, asyncHandler(conversationsController.checkConversationExists));
 
 /**
  * @openapi

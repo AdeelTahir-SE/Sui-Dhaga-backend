@@ -50,18 +50,10 @@ export const usersRoutes = Router();
  */
 usersRoutes.get("/users/me", requireAuth, asyncHandler(usersController.getMyProfile));
 usersRoutes.patch("/users/me", requireAuth, validate(updateProfileSchema), asyncHandler(usersController.updateMyProfile));
-usersRoutes.delete("/users/me", requireAuth, asyncHandler(usersController.deleteMyProfile));
 
 /**
  * @swagger
  * /users/me/avatar:
- *   patch:
- *     summary: Upload profile avatar picture to storage and update profile avatar_url
- *     tags: [Users]
- *     security: [{ BearerAuth: [] }]
- *     responses:
- *       200:
- *         description: Avatar uploaded and profile updated successfully
  *   post:
  *     summary: Upload profile avatar picture to storage and update profile avatar_url
  *     tags: [Users]
@@ -70,7 +62,6 @@ usersRoutes.delete("/users/me", requireAuth, asyncHandler(usersController.delete
  *       200:
  *         description: Avatar uploaded and profile updated successfully
  */
-usersRoutes.patch("/users/me/avatar", requireAuth, uploadAvatar.single("avatar"), asyncHandler(usersController.updateAvatar));
 usersRoutes.post("/users/me/avatar", requireAuth, uploadAvatar.single("avatar"), asyncHandler(usersController.updateAvatar));
 
 // Specific endpoints MUST precede the parametrized :userId route

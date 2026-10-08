@@ -7,8 +7,6 @@ import * as ordersController from "./orders.controller.js";
 import {
   createOrderSchema,
   updateOrderStatusSchema,
-  addOrderTrackingSchema,
-  updateOrderTrackingSchema,
 } from "./orders.validator.js";
 
 export const ordersRoutes = Router();
@@ -104,113 +102,5 @@ ordersRoutes.get("/orders/:orderId/parties", ...orderAuth, asyncHandler(ordersCo
  */
 ordersRoutes.patch("/orders/:orderId/status", requireAuth, requireRole("tailor", "admin"), validate(updateOrderStatusSchema), asyncHandler(ordersController.updateOrderStatus));
 
-/**
- * @swagger
- * /orders/{orderId}/cancel:
- *   post:
- *     summary: Cancel an existing order
- *     tags: [Orders]
- *     security: [{ BearerAuth: [] }]
- *     parameters:
- *       - in: path
- *         name: orderId
- *         required: true
- *         schema: { type: string, format: uuid }
- *     responses:
- *       200:
- *         description: Order cancelled
- */
-ordersRoutes.post("/orders/:orderId/cancel", ...orderAuth, asyncHandler(ordersController.cancelOrder));
 
-/**
- * @swagger
- * /orders/{orderId}/invoice:
- *   get:
- *     summary: Generate and retrieve digital invoice for an order
- *     tags: [Orders]
- *     security: [{ BearerAuth: [] }]
- *     parameters:
- *       - in: path
- *         name: orderId
- *         required: true
- *         schema: { type: string, format: uuid }
- *     responses:
- *       200:
- *         description: Order invoice metadata and details
- */
-ordersRoutes.get("/orders/:orderId/invoice", ...orderAuth, asyncHandler(ordersController.getOrderInvoice));
-
-/**
- * @swagger
- * /orders/{orderId}/tracking:
- *   get:
- *     summary: Get order progress tracking timeline events
- *     tags: [Orders]
- *     security: [{ BearerAuth: [] }]
- *     parameters:
- *       - in: path
- *         name: orderId
- *         required: true
- *         schema: { type: string, format: uuid }
- *     responses:
- *       200:
- *         description: List of tracking status checkpoints
- *   post:
- *     summary: Add a new tracking status checkpoint to an order
- *     tags: [Orders]
- *     security: [{ BearerAuth: [] }]
- *     parameters:
- *       - in: path
- *         name: orderId
- *         required: true
- *         schema: { type: string, format: uuid }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [status]
- *             properties:
- *               status: { type: string, example: "Fabric Cutting In Progress" }
- *               description: { type: string }
- *               location: { type: string }
- *     responses:
- *       201:
- *         description: Tracking event added
- */
-ordersRoutes.get("/orders/:orderId/tracking", ...orderAuth, asyncHandler(ordersController.getOrderTracking));
-ordersRoutes.post("/orders/:orderId/tracking", requireAuth, requireRole("tailor", "admin"), validate(addOrderTrackingSchema), asyncHandler(ordersController.addOrderTracking));
-
-/**
- * @swagger
- * /orders/{orderId}/tracking/{trackingId}:
- *   patch:
- *     summary: Update an existing order tracking event
- *     tags: [Orders]
- *     security: [{ BearerAuth: [] }]
- *     parameters:
- *       - in: path
- *         name: orderId
- *         required: true
- *         schema: { type: string, format: uuid }
- *       - in: path
- *         name: trackingId
- *         required: true
- *         schema: { type: string, format: uuid }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               status: { type: string }
- *               description: { type: string }
- *               location: { type: string }
- *     responses:
- *       200:
- *         description: Tracking checkpoint updated
- */
-ordersRoutes.patch("/orders/:orderId/tracking/:trackingId", requireAuth, requireRole("tailor", "admin"), validate(updateOrderTrackingSchema), asyncHandler(ordersController.updateOrderTracking));
 
