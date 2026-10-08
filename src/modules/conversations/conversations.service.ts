@@ -6,6 +6,7 @@ import { storageService } from "../../services/storage.service.js";
 import { AppError } from "../../utils/app-error.js";
 import { env } from "../../config/env.js";
 import { notificationsService } from "../notifications/notifications.service.js";
+import { usersService } from "../users/users.service.js";
 
 
 function getFileExtension(filename?: string, mimetype?: string): string {
@@ -301,6 +302,32 @@ export const conversationsService = {
     }
 
     const client = getDbClient();
+
+    // Verify neither user has blocked the other
+    const { data: conv } = await client
+      .from("conversations")
+      .select("participant1_id, participant2_id")
+      .eq("id", conversationId)
+      .maybeSingle();
+
+    if (conv) {
+      const otherId =
+        String(conv.participant1_id).toLowerCase() === senderId.toLowerCase()
+          ? conv.participant2_id
+          : conv.participant1_id;
+
+      if (otherId) {
+        const blockStatus = await usersService.checkBlockStatus(senderId, otherId);
+        if (blockStatus.isBlocked) {
+          throw new AppError(
+            blockStatus.blockedByMe
+              ? "Cannot send message. You have blocked this user."
+              : "Cannot send message. Communication between these users is blocked.",
+            403
+          );
+        }
+      }
+    }
 
     const { data: created, error } = await client
       .from("messages")
