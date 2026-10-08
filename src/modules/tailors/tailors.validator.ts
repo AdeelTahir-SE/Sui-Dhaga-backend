@@ -10,6 +10,8 @@ export const createTailorSchema = z.object({
   experienceYears: z.number().int().optional(),
   bio: z.string().optional(),
   bannerUrl: z.string().url().optional(),
+  organizationName: z.string().optional().nullable(),
+  organization: z.string().optional().nullable(),
 });
 
 export const updateTailorSchema = createTailorSchema.partial().extend({
@@ -84,6 +86,8 @@ export const getNearbyTailorsQuerySchema = z.object({
   city: z.string().optional(),
   search: z.string().optional(),
   minRating: z.coerce.number().min(0).max(5).optional(),
+  organization: z.string().optional(),
+  organizationName: z.string().optional(),
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
 });

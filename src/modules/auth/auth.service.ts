@@ -324,13 +324,17 @@ export const authService = {
 
     // 3. Ensure profile in profiles table with upsert to prevent unique constraint conflicts
     let profile: any = null;
+    let userAlreadyExisted = false;
     try {
       const { data: existingProfile } = await client
         .from("profiles")
         .select("*")
         .eq("id", targetUser.id)
         .maybeSingle();
-      profile = existingProfile;
+      if (existingProfile) {
+        profile = existingProfile;
+        userAlreadyExisted = true;
+      }
     } catch (profErr) {
       console.warn("Notice: Error fetching existing profile:", profErr);
     }
@@ -387,10 +391,14 @@ export const authService = {
       profile = updatedProf || profile;
     }
 
-    // Check if account completion is required (exists in profiles table, phone is provided, role is set, tailor record exists if tailor)
+    // Check if account completion is required:
+    // If the user already existed in profiles or has completed profile flag,
+    // or already has an established role ("customer" or "tailor"),
+    // they should NEVER be prompted with the tailor/customer role selection screen.
     const hasCompletedFlag = targetUser.user_metadata?.profile_completed === true;
-    const hasRoleSet = Boolean(profile?.role && profile.role !== "authenticated");
-    const hasPhone = Boolean(profile?.phone || targetUser.user_metadata?.phone);
+    const establishedRole =
+      (profile?.role && profile.role !== "authenticated" ? profile.role : null) ||
+      (targetUser.user_metadata?.role && targetUser.user_metadata.role !== "authenticated" ? targetUser.user_metadata.role : null);
 
     let hasTailor = true;
     if (profile?.role === "tailor" || targetUser.user_metadata?.role === "tailor") {
@@ -405,11 +413,9 @@ export const authService = {
     }
 
     const isProfileCompleted = Boolean(
-      profile &&
-      hasPhone &&
-      hasRoleSet &&
-      hasTailor &&
-      hasCompletedFlag
+      hasCompletedFlag ||
+      userAlreadyExisted ||
+      (establishedRole && (establishedRole === "customer" || hasTailor))
     );
 
     const needsProfileCompletion = !isProfileCompleted;

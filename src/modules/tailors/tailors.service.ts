@@ -16,18 +16,24 @@ export const tailorsService = {
     cacheService.delByPattern("tailors:*");
   },
 
-  async getTailors(page = 1, limit = 20) {
-    const cacheKey = `tailors:list:${page}:${limit}`;
+  async getTailors(page = 1, limit = 20, organization?: string) {
+    const cacheKey = `tailors:list:${page}:${limit}:${organization || "all"}`;
     const cached = cacheService.get<any>(cacheKey);
     if (cached) return cached;
 
+    const filters: Record<string, unknown> = {};
+    if (organization) {
+      filters.organization_name = organization;
+    }
+
     const result = await fetchTableData({
       table: "tailors",
-      select: "id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address)",
+      select: "id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, organization_name, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address)",
       page,
       limit,
       orderColumn: "rating",
       ascending: false,
+      filters: Object.keys(filters).length > 0 ? filters : undefined,
     });
 
     cacheService.set(cacheKey, result, 60);
@@ -41,6 +47,7 @@ export const tailorsService = {
     city?: string;
     minRating?: number;
     search?: string;
+    organization?: string;
     page?: number;
     limit?: number;
   }) {
@@ -64,6 +71,7 @@ export const tailorsService = {
       p_city: params.city || null,
       p_min_rating: params.minRating || null,
       p_search: params.search || null,
+      p_organization: params.organization || null,
     });
 
     if (error) {
@@ -106,18 +114,22 @@ export const tailorsService = {
       city?: string;
       minRating?: number;
       search?: string;
+      organization?: string;
     },
     page = 1,
     limit = 20
   ) {
     const client = getDbClient();
-    let query = client.from("tailors").select("id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address)");
+    let query = client.from("tailors").select("id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, organization_name, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address)");
 
     if (params.city && params.city.toLowerCase() !== "all") {
       query = query.ilike("city", `%${params.city}%`);
     }
     if (params.minRating) {
       query = query.gte("rating", params.minRating);
+    }
+    if (params.organization) {
+      query = query.ilike("organization_name", params.organization);
     }
 
     const { data, error } = await query;
@@ -185,7 +197,7 @@ export const tailorsService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("tailors")
-      .select("id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address), services:tailor_services(id, title, price, description, category, is_active), availability:tailor_availability(*), gallery:tailor_gallery(id, image_url, caption, display_order), reviews(id, rating, comment, images, created_at, customer:profiles!customer_id(id, full_name, avatar_url))")
+      .select("id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, organization_name, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address), services:tailor_services(id, title, price, description, category, is_active), availability:tailor_availability(*), gallery:tailor_gallery(id, image_url, caption, display_order), reviews(id, rating, comment, images, created_at, customer:profiles!customer_id(id, full_name, avatar_url))")
       .eq("id", tailorId)
       .single();
 
@@ -201,7 +213,12 @@ export const tailorsService = {
   async createTailor(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
     if (!userId) throw new AppError("Authentication required", 401);
     const client = getDbClient();
-    const mapped = toSnakeCase(data);
+    const cleanData = { ...data };
+    if (cleanData.organization && !cleanData.organizationName) {
+      cleanData.organizationName = cleanData.organization;
+    }
+    delete cleanData.organization;
+    const mapped = toSnakeCase(cleanData);
     const { data: created, error } = await client
       .from("tailors")
       .insert({ ...mapped, user_id: userId })
@@ -215,7 +232,12 @@ export const tailorsService = {
 
   async updateTailor(tailorId: string, userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>) {
     const client = getDbClient();
-    const mapped = toSnakeCase(data);
+    const cleanData = { ...data };
+    if (cleanData.organization && !cleanData.organizationName) {
+      cleanData.organizationName = cleanData.organization;
+    }
+    delete cleanData.organization;
+    const mapped = toSnakeCase(cleanData);
     let query = client.from("tailors").update(mapped).eq("id", tailorId);
 
     if (userId && userRole !== "admin") {

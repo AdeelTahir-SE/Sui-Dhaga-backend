@@ -6,7 +6,15 @@ import { tailorsService } from "./tailors.service.js";
 export const getTailors: RequestHandler = async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-  const result = await tailorsService.getTailors(page, limit);
+  const organization =
+    typeof req.query.organization === "string"
+      ? req.query.organization
+      : typeof req.query.organization_name === "string"
+      ? req.query.organization_name
+      : typeof req.query.organizationName === "string"
+      ? req.query.organizationName
+      : undefined;
+  const result = await tailorsService.getTailors(page, limit, organization);
   paginated(res, result.records, page, limit, result.total, "Tailors fetched successfully");
 };
 
@@ -19,6 +27,14 @@ export const getNearbyTailors: RequestHandler = async (req, res) => {
   const city = typeof req.query.city === "string" && req.query.city.toLowerCase() !== "all" ? req.query.city : undefined;
   const search = typeof req.query.search === "string" ? req.query.search : typeof req.query.q === "string" ? req.query.q : undefined;
   const minRating = req.query.minRating ? Number(req.query.minRating) : undefined;
+  const organization =
+    typeof req.query.organization === "string"
+      ? req.query.organization
+      : typeof req.query.organization_name === "string"
+      ? req.query.organization_name
+      : typeof req.query.organizationName === "string"
+      ? req.query.organizationName
+      : undefined;
 
   if (!isNaN(userLat) && !isNaN(userLng)) {
     const result = await tailorsService.getNearbyTailors({
@@ -27,6 +43,7 @@ export const getNearbyTailors: RequestHandler = async (req, res) => {
       radiusKm: radius,
       city,
       search,
+      organization,
       minRating,
       page,
       limit,
@@ -34,7 +51,7 @@ export const getNearbyTailors: RequestHandler = async (req, res) => {
     return paginated(res, result.records, page, limit, result.total, "Nearby tailors fetched successfully");
   }
 
-  const result = await tailorsService.getTailors(page, limit);
+  const result = await tailorsService.getTailors(page, limit, organization);
   paginated(res, result.records, page, limit, result.total, "Tailors fetched successfully");
 };
 
