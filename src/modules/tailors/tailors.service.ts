@@ -23,7 +23,7 @@ export const tailorsService = {
 
     const result = await fetchTableData({
       table: "tailors",
-      select: "*, profile:profiles(*)",
+      select: "id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address)",
       page,
       limit,
       orderColumn: "rating",
@@ -83,7 +83,6 @@ export const tailorsService = {
 
       return {
         ...t,
-        distance_meters: distMeters,
         distance_km: distKm,
         distance: distStr,
       };
@@ -112,7 +111,7 @@ export const tailorsService = {
     limit = 20
   ) {
     const client = getDbClient();
-    let query = client.from("tailors").select("*, profile:profiles(*)");
+    let query = client.from("tailors").select("id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address)");
 
     if (params.city && params.city.toLowerCase() !== "all") {
       query = query.ilike("city", `%${params.city}%`);
@@ -155,11 +154,10 @@ export const tailorsService = {
           return {
             ...t,
             distance_km: distanceKm,
-            distance_meters: Math.round(distanceKm * 1000),
             distance: `${distanceKm} km away`,
           };
         }
-        return { ...t, distance_km: null, distance_meters: null, distance: null };
+        return { ...t, distance_km: null, distance: null };
       })
       .filter((t) => typeof t.distance_km === "number" && t.distance_km <= radiusKm)
       .sort((a, b) => {
@@ -187,7 +185,7 @@ export const tailorsService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("tailors")
-      .select("*, profile:profiles(*), services:tailor_services(*), availability:tailor_availability(*), gallery:tailor_gallery(*), reviews(*)")
+      .select("id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address), services:tailor_services(id, title, price, description, category, is_active), availability:tailor_availability(id, day_of_week, start_time, end_time, is_available), gallery:tailor_gallery(id, image_url, caption, display_order), reviews(id, rating, comment, images, created_at, customer:profiles!customer_id(id, full_name, avatar_url))")
       .eq("id", tailorId)
       .single();
 

@@ -120,89 +120,74 @@ function formatOrderRecord(order: any) {
     order.tailor_verified
   );
 
+  const orderId = order.id;
+  const orderNumber = order.order_number || order.orderNumber || (orderId ? `#${orderId.slice(0, 8).toUpperCase()}` : undefined);
+  const customerId = order.customer_id || order.customerId;
+  const tailorId = order.tailor_id || order.tailorId;
+  const itemName = order.item_name || order.itemName || "Custom Garment";
+  const additionalNotes = order.additional_notes || order.additionalNotes || order.notes || null;
+  const deliveryDate = order.delivery_date || order.deliveryDate || null;
+
   return {
-    ...order,
-    total_amount: price,
-    totalAmount: price,
+    id: orderId,
+    orderNumber,
+    customerId,
+    tailorId,
+    status: order.status || "pending",
+    itemName,
     price,
-    amount: price,
-    itemName: order.item_name ?? order.itemName ?? null,
-    item_name: order.item_name ?? order.itemName ?? null,
-    designImages,
-    design_images: designImages,
     imageUrl: firstDesignImg,
-    image: firstDesignImg,
-    additionalNotes: order.additional_notes ?? order.additionalNotes ?? null,
-    additional_notes: order.additional_notes ?? order.additionalNotes ?? null,
-    deliveryDate: order.delivery_date ?? order.deliveryDate ?? null,
-    delivery_date: order.delivery_date ?? order.deliveryDate ?? null,
+    designImages,
+    deliveryDate,
+    additionalNotes,
     measurements: order.measurements ?? {},
 
-    // Real Customer details
+    // Customer details matching mobile app
     customerName,
-    customer_name: customerName,
     customerPhone,
-    customer_phone: customerPhone,
     customerAvatar,
-    customer_avatar: customerAvatar,
     customerAddress,
-    customer_address: customerAddress,
     customerCity,
-    customer_city: customerCity,
     customer: order.customer
       ? {
-          id: order.customer.id || order.customer_id,
+          id: order.customer.id || customerId,
           fullName: customerName,
-          full_name: customerName,
           phone: customerPhone,
           avatarUrl: customerAvatar,
-          avatar_url: customerAvatar,
           address: customerAddress,
           city: customerCity,
         }
       : null,
 
-    // Real Tailor details
+    // Tailor details matching mobile app
     tailorName,
-    tailor_name: tailorName,
     tailorShopName,
-    tailor_shop_name: tailorShopName,
     tailorAvatar,
-    tailor_avatar: tailorAvatar,
     tailorPhone,
-    tailor_phone: tailorPhone,
     tailorCity,
-    tailor_city: tailorCity,
     tailorSpecialties,
-    tailor_specialties: tailorSpecialties,
-    tailorSpecialty,
-    tailor_specialty: tailorSpecialty,
     tailorRating,
-    tailor_rating: tailorRating,
     tailorReviewCount,
-    tailor_review_count: tailorReviewCount,
     tailorVerified,
-    tailor_verified: tailorVerified,
     tailor: order.tailor
       ? {
-          id: order.tailor.id || order.tailor_id,
-          userId: order.tailor.user_id,
-          user_id: order.tailor.user_id,
-          shopName: tailorShopName,
-          shop_name: tailorShopName,
+          id: order.tailor.id || tailorId,
+          userId: order.tailor.user_id || order.tailor.userId,
           name: tailorName,
+          shopName: tailorShopName,
           avatarUrl: tailorAvatar,
-          avatar_url: tailorAvatar,
           phone: tailorPhone,
           city: tailorCity,
           address: order.tailor.address || tailorCity,
           rating: tailorRating,
           reviewCount: tailorReviewCount,
-          review_count: tailorReviewCount,
           specialties: tailorSpecialties,
           verified: tailorVerified,
         }
       : null,
+
+    createdAt: order.created_at || order.createdAt,
+    updatedAt: order.updated_at || order.updatedAt,
   };
 }
 
@@ -214,7 +199,7 @@ async function hydrateOrderParties(client: any, order: any) {
     try {
       const { data: custProf } = await client
         .from("profiles")
-        .select("id, full_name, phone, address, avatar_url, bio, role")
+        .select("id, full_name, phone, address, avatar_url")
         .eq("id", order.customer_id)
         .maybeSingle();
       if (custProf) {
@@ -230,7 +215,7 @@ async function hydrateOrderParties(client: any, order: any) {
       if (order.tailor && order.tailor.user_id && !order.tailor.profile) {
         const { data: tailorUserProf } = await client
           .from("profiles")
-          .select("id, full_name, phone, address, avatar_url, bio")
+          .select("id, full_name, phone, address, avatar_url")
           .eq("id", order.tailor.user_id)
           .maybeSingle();
         if (tailorUserProf) {
@@ -239,7 +224,7 @@ async function hydrateOrderParties(client: any, order: any) {
       } else if (!order.tailor) {
         const { data: tRec } = await client
           .from("tailors")
-          .select("*, profile:profiles(*)")
+          .select("id, user_id, shop_name, city, address, rating, review_count, banner_url, verified, specialties, profile:profiles(id, full_name, phone, address, avatar_url)")
           .or(`id.eq.${tailorRef},user_id.eq.${tailorRef}`)
           .maybeSingle();
         if (tRec) {
@@ -247,7 +232,7 @@ async function hydrateOrderParties(client: any, order: any) {
         } else {
           const { data: profRec } = await client
             .from("profiles")
-            .select("id, full_name, phone, address, avatar_url, bio")
+            .select("id, full_name, phone, address, avatar_url")
             .eq("id", tailorRef)
             .maybeSingle();
           if (profRec) {
@@ -279,7 +264,7 @@ export const ordersService = {
 
     let query = client
       .from("orders")
-      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*, profile:profiles(*)), service:tailor_services!service_id(*), design:designs!design_id(*), measurement:measurements!measurement_id(*)", { count: "exact" });
+      .select("id, customer_id, tailor_id, item_name, total_amount, status, delivery_date, additional_notes, design_images, measurements, created_at, updated_at, customer:profiles!customer_id(id, full_name, phone, avatar_url, address), tailor:tailors!tailor_id(id, user_id, shop_name, rating, review_count, city, address, banner_url, verified, profile:profiles(id, full_name, phone, avatar_url))", { count: "exact" });
 
     if (userId && userRole !== "admin") {
       if (userRole === "tailor") {
@@ -320,7 +305,7 @@ export const ordersService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("orders")
-      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*, profile:profiles(*)), service:tailor_services!service_id(*), design:designs!design_id(*), measurement:measurements!measurement_id(*), tracking:order_tracking(*)")
+      .select("id, customer_id, tailor_id, service_id, design_id, measurement_id, item_name, total_amount, status, delivery_date, additional_notes, design_images, measurements, created_at, updated_at, customer:profiles!customer_id(id, full_name, phone, avatar_url, address), tailor:tailors!tailor_id(id, user_id, shop_name, rating, review_count, city, address, banner_url, verified, specialties, profile:profiles(id, full_name, phone, avatar_url)), service:tailor_services!service_id(id, title, price, category), design:designs!design_id(id, title, image_url), measurement:measurements!measurement_id(id, title, chest, waist, hips, shoulder, sleeve_length, inseam, neck), tracking:order_tracking(id, status, description, location, created_at)")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -384,16 +369,18 @@ export const ordersService = {
     const { data: created, error } = await client
       .from("orders")
       .insert(payload)
-      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*)")
+      .select("id, customer_id, tailor_id, item_name, total_amount, status, delivery_date, additional_notes, design_images, measurements, created_at, updated_at, customer:profiles!customer_id(id, full_name, phone, avatar_url, address), tailor:tailors!tailor_id(id, user_id, shop_name, rating, review_count, city, address, banner_url, verified, profile:profiles(id, full_name, phone, avatar_url))")
       .single();
 
     if (error) throw new AppError(error.message, 400);
 
     // Notify tailor and customer of new order placement
     try {
-      const tailorUserId = created?.tailor?.user_id;
-      const customerName = created?.customer?.full_name || "A customer";
-      const itemName = created?.item_name || "Custom Stitching";
+      const tailorObj: any = (created as any)?.tailor;
+      const custObj: any = (created as any)?.customer;
+      const tailorUserId = Array.isArray(tailorObj) ? tailorObj[0]?.user_id : tailorObj?.user_id;
+      const customerName = (Array.isArray(custObj) ? custObj[0]?.full_name : custObj?.full_name) || "A customer";
+      const itemName = (created as any)?.item_name || "Custom Stitching";
       const orderCode = created?.id ? created.id.slice(0, 8).toUpperCase() : "";
 
       // 1. Notify the tailor about the new incoming order
@@ -413,7 +400,7 @@ export const ordersService = {
 
       // 2. Notify the customer with order confirmation
       if (userId) {
-        const tailorShop = created?.tailor?.shop_name || "the tailor";
+        const tailorShop = (Array.isArray(tailorObj) ? tailorObj[0]?.shop_name : tailorObj?.shop_name) || "the tailor";
         await notificationsService.createNotification({
           userId,
           title: "Order Placed Successfully ✨",
@@ -438,7 +425,7 @@ export const ordersService = {
       .from("orders")
       .update({ status })
       .eq("id", orderId)
-      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*)")
+      .select("id, customer_id, tailor_id, item_name, total_amount, status, delivery_date, additional_notes, design_images, measurements, created_at, updated_at, customer:profiles!customer_id(id, full_name, phone, avatar_url, address), tailor:tailors!tailor_id(id, user_id, shop_name, rating, review_count, city, address, banner_url, verified, profile:profiles(id, full_name, phone, avatar_url))")
       .single();
 
     if (error) throw new AppError(error.message, 400);
@@ -446,7 +433,8 @@ export const ordersService = {
     try {
       if (updated?.customer_id) {
         const orderCode = orderId.slice(0, 8).toUpperCase();
-        const tailorShop = updated?.tailor?.shop_name || "Your tailor";
+        const tailorObj: any = (updated as any)?.tailor;
+        const tailorShop = (Array.isArray(tailorObj) ? tailorObj[0]?.shop_name : tailorObj?.shop_name) || "Your tailor";
         const formattedStatus = status.replace(/_/g, " ").toUpperCase();
 
         await notificationsService.createNotification({
@@ -464,7 +452,7 @@ export const ordersService = {
       console.warn("[Order Status Notification Warning]:", notifErr?.message || notifErr);
     }
 
-    return updated;
+    return formatOrderRecord(updated);
   },
 
   async cancelOrder(orderId: string, userId: string | undefined, userRole: string | undefined) {
@@ -473,7 +461,7 @@ export const ordersService = {
       .from("orders")
       .update({ status: "cancelled" })
       .eq("id", orderId)
-      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*)")
+      .select("id, customer_id, tailor_id, item_name, total_amount, status, delivery_date, additional_notes, design_images, measurements, created_at, updated_at, customer:profiles!customer_id(id, full_name, phone, avatar_url, address), tailor:tailors!tailor_id(id, user_id, shop_name, rating, review_count, city, address, banner_url, verified, profile:profiles(id, full_name, phone, avatar_url))")
       .single();
 
     if (error) throw new AppError(error.message, 400);
@@ -481,7 +469,9 @@ export const ordersService = {
     try {
       const orderCode = orderId.slice(0, 8).toUpperCase();
       // If customer cancelled, notify tailor. If tailor cancelled, notify customer.
-      const notifyUserId = userId === updated?.customer_id ? updated?.tailor?.user_id : updated?.customer_id;
+      const tailorObj: any = (updated as any)?.tailor;
+      const tailorUserId = Array.isArray(tailorObj) ? tailorObj[0]?.user_id : tailorObj?.user_id;
+      const notifyUserId = userId === updated?.customer_id ? tailorUserId : updated?.customer_id;
       if (notifyUserId) {
         await notificationsService.createNotification({
           userId: notifyUserId,
@@ -498,7 +488,7 @@ export const ordersService = {
       console.warn("[Order Cancel Notification Warning]:", notifErr?.message || notifErr);
     }
 
-    return updated;
+    return formatOrderRecord(updated);
   },
 
 

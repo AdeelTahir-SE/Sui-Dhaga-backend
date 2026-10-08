@@ -26,7 +26,7 @@ export const communityService = {
 
     let query = client
       .from("community_posts")
-      .select("*, author:profiles!user_id(*)", { count: "exact" });
+      .select("id, user_id, title, content, images, tags, category, likes_count, saves_count, created_at, updated_at, author:profiles!user_id(id, full_name, avatar_url, role)", { count: "exact" });
 
     // Author filter
     if (options.authorId) {
@@ -102,7 +102,7 @@ export const communityService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("community_posts")
-      .select("*, author:profiles!user_id(*), comments:community_comments(*, user:profiles!user_id(*))")
+      .select("id, user_id, title, content, images, tags, category, likes_count, saves_count, created_at, updated_at, author:profiles!user_id(id, full_name, avatar_url, role), comments:community_comments(id, post_id, user_id, content, created_at, user:profiles!user_id(id, full_name, avatar_url, role))")
       .eq("id", postId)
       .single();
 
@@ -281,9 +281,7 @@ export const communityService = {
       post: updated
         ? {
             ...updated,
-            likes_count: safeLikesCount,
             likesCount: safeLikesCount,
-            is_liked: liked,
             isLiked: liked,
           }
         : null,
@@ -330,9 +328,7 @@ export const communityService = {
       post: updated
         ? {
             ...updated,
-            saves_count: safeSavesCount,
             savesCount: safeSavesCount,
-            is_saved: saved,
             isSaved: saved,
           }
         : null,
@@ -343,7 +339,7 @@ export const communityService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("community_comments")
-      .select("*, user:profiles!user_id(*)")
+      .select("id, post_id, user_id, content, created_at, user:profiles!user_id(id, full_name, avatar_url, role)")
       .eq("post_id", postId)
       .order("created_at", { ascending: true });
 

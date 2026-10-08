@@ -7,7 +7,7 @@ export const wishlistService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("wishlist_items")
-      .select("*, tailor:tailors(*), design:designs(*)")
+      .select("id, user_id, item_type, tailor_id, design_id, created_at, tailor:tailors(id, shop_name, rating, review_count, city, address, banner_url, specialties, verified), design:designs(id, title, image_url, type, created_at)")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
@@ -25,7 +25,7 @@ export const wishlistService = {
         item_type: "tailor",
         tailor_id: tailorId,
       })
-      .select("*, tailor:tailors(*)")
+      .select("id, user_id, item_type, tailor_id, design_id, created_at, tailor:tailors(id, shop_name, rating, review_count, city, address, banner_url, specialties, verified)")
       .single();
 
     if (error) throw new AppError(error.message, 400);
@@ -55,7 +55,7 @@ export const wishlistService = {
         item_type: "design",
         design_id: designId,
       })
-      .select("*, design:designs(*)")
+      .select("id, user_id, item_type, tailor_id, design_id, created_at, design:designs(id, title, image_url, type, created_at)")
       .single();
 
     if (error) throw new AppError(error.message, 400);

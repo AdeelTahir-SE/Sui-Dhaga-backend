@@ -25,7 +25,7 @@ export const designsService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("designs")
-      .select("*, shared_tailor:tailors!shared_with_tailor_id(*)")
+      .select("*, shared_tailor:tailors!shared_with_tailor_id(id, shop_name, rating, city, address, banner_url)")
       .eq("id", designId)
       .single();
 

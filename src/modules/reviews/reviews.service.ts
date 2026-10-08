@@ -11,7 +11,7 @@ export const reviewsService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("reviews")
-      .select("*, customer:profiles!customer_id(*)")
+      .select("id, order_id, tailor_id, customer_id, rating, comment, images, created_at, customer:profiles!customer_id(id, full_name, avatar_url)")
       .eq("tailor_id", tailorId)
       .order("created_at", { ascending: false });
 
@@ -23,7 +23,7 @@ export const reviewsService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("reviews")
-      .select("*, customer:profiles!customer_id(*)")
+      .select("id, order_id, tailor_id, customer_id, rating, comment, images, created_at, customer:profiles!customer_id(id, full_name, avatar_url)")
       .eq("order_id", orderId)
       .maybeSingle();
 
@@ -64,7 +64,7 @@ export const reviewsService = {
           images: mapped.images,
         })
         .eq("id", existing.id)
-        .select("*, customer:profiles!customer_id(*)")
+        .select("id, order_id, tailor_id, customer_id, rating, comment, images, created_at, customer:profiles!customer_id(id, full_name, avatar_url)")
         .single();
       if (updateError) throw new AppError(updateError.message, 400);
       resultReview = updated;
@@ -77,7 +77,7 @@ export const reviewsService = {
           customer_id: userId,
           tailor_id: tailorId,
         })
-        .select("*, customer:profiles!customer_id(*)")
+        .select("id, order_id, tailor_id, customer_id, rating, comment, images, created_at, customer:profiles!customer_id(id, full_name, avatar_url)")
         .single();
 
       if (error) throw new AppError(error.message, 400);

@@ -50,7 +50,7 @@ export const usersService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("profiles")
-      .select("*")
+      .select("id, role, status, full_name, bio, avatar_url, phone, address, created_at, updated_at")
       .eq("id", userId)
       .single();
 

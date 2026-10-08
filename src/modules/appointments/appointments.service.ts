@@ -19,7 +19,7 @@ export const appointmentsService = {
 
     let query = client
       .from("appointments")
-      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*), service:tailor_services!service_id(*)", { count: "exact" });
+      .select("id, customer_id, tailor_id, service_id, appointment_date, appointment_time, notes, status, created_at, updated_at, customer:profiles!customer_id(id, full_name, avatar_url, phone), tailor:tailors!tailor_id(id, user_id, shop_name, rating, address, city, banner_url), service:tailor_services!service_id(id, title, price, duration, category)", { count: "exact" });
 
     if (userId && userRole !== "admin") {
       if (userRole === "tailor") {
@@ -62,7 +62,7 @@ export const appointmentsService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("appointments")
-      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*), service:tailor_services!service_id(*)")
+      .select("id, customer_id, tailor_id, service_id, appointment_date, appointment_time, notes, status, created_at, updated_at, customer:profiles!customer_id(id, full_name, avatar_url, phone), tailor:tailors!tailor_id(id, user_id, shop_name, rating, address, city, banner_url), service:tailor_services!service_id(id, title, price, duration, category)")
       .eq("id", appointmentId)
       .single();
 
@@ -159,16 +159,18 @@ export const appointmentsService = {
     const { data: created, error } = await client
       .from("appointments")
       .insert(insertPayload)
-      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*)")
+      .select("id, customer_id, tailor_id, service_id, appointment_date, appointment_time, notes, status, created_at, updated_at, customer:profiles!customer_id(id, full_name, avatar_url, phone), tailor:tailors!tailor_id(id, user_id, shop_name, rating, address, city, banner_url)")
       .single();
 
     if (error) throw new AppError(error.message, 400);
 
     // Notify parties about newly booked appointment
     try {
-      const customerName = created?.customer?.full_name || "A customer";
-      const tailorUserId = created?.tailor?.user_id;
-      const tailorShop = created?.tailor?.shop_name || "the tailor";
+      const custObj: any = (created as any)?.customer;
+      const tailorObj: any = (created as any)?.tailor;
+      const customerName = (Array.isArray(custObj) ? custObj[0]?.full_name : custObj?.full_name) || "A customer";
+      const tailorUserId = Array.isArray(tailorObj) ? tailorObj[0]?.user_id : tailorObj?.user_id;
+      const tailorShop = (Array.isArray(tailorObj) ? tailorObj[0]?.shop_name : tailorObj?.shop_name) || "the tailor";
       const apptDate = created?.appointment_date || appointmentDate;
       const apptTime = created?.appointment_time || appointmentTime;
 
@@ -217,14 +219,15 @@ export const appointmentsService = {
       .from("appointments")
       .update({ status: normalizedStatus })
       .eq("id", appointmentId)
-      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*)")
+      .select("id, customer_id, tailor_id, service_id, appointment_date, appointment_time, notes, status, created_at, updated_at, customer:profiles!customer_id(id, full_name, avatar_url, phone), tailor:tailors!tailor_id(id, user_id, shop_name, rating, address, city, banner_url)")
       .single();
 
     if (error) throw new AppError(error.message, 400);
 
     try {
       if (updated?.customer_id) {
-        const tailorShop = updated?.tailor?.shop_name || "Your tailor";
+        const tailorObj: any = (updated as any)?.tailor;
+        const tailorShop = (Array.isArray(tailorObj) ? tailorObj[0]?.shop_name : tailorObj?.shop_name) || "Your tailor";
         const formattedStatus = normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1);
 
         await notificationsService.createNotification({
@@ -259,14 +262,15 @@ export const appointmentsService = {
       .from("appointments")
       .update(updatePayload)
       .eq("id", appointmentId)
-      .select("*, customer:profiles!customer_id(*), tailor:tailors!tailor_id(*)")
+      .select("id, customer_id, tailor_id, service_id, appointment_date, appointment_time, notes, status, created_at, updated_at, customer:profiles!customer_id(id, full_name, avatar_url, phone), tailor:tailors!tailor_id(id, user_id, shop_name, rating, address, city, banner_url)")
       .single();
 
     if (error) throw new AppError(error.message, 400);
 
     try {
       if (updated?.customer_id) {
-        const tailorShop = updated?.tailor?.shop_name || "Your tailor";
+        const tailorObj: any = (updated as any)?.tailor;
+        const tailorShop = (Array.isArray(tailorObj) ? tailorObj[0]?.shop_name : tailorObj?.shop_name) || "Your tailor";
         await notificationsService.createNotification({
           userId: updated.customer_id,
           title: "Appointment Rescheduled 📅",

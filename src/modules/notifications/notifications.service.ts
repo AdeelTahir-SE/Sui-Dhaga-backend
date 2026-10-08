@@ -11,6 +11,7 @@ export const notificationsService = {
   async getNotifications(userId: string | undefined, userRole: string | undefined, page = 1, limit = 20) {
     return fetchTableData({
       table: "notifications",
+      select: "id, user_id, title, message, type, is_read, read_at, data, created_at",
       userId,
       userRole,
       page,

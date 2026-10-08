@@ -6,10 +6,34 @@ import {
 } from "../../utils/resource-helper.js";
 import { AppError } from "../../utils/app-error.js";
 
+function formatMeasurement(m: any) {
+  if (!m) return m;
+  return {
+    id: m.id,
+    userId: m.user_id ?? m.userId,
+    profileName: m.title || m.profileName || m.profile_name || "My Measurements",
+    gender: m.gender,
+    unit: m.unit || "in",
+    chest: m.chest != null ? Number(m.chest) : undefined,
+    waist: m.waist != null ? Number(m.waist) : undefined,
+    hips: m.hips != null ? Number(m.hips) : undefined,
+    shoulder: m.shoulder != null ? Number(m.shoulder) : undefined,
+    sleeveLength: (m.sleeveLength ?? m.sleeve_length) != null ? Number(m.sleeveLength ?? m.sleeve_length) : undefined,
+    shirtLength: (m.shirtLength ?? m.shirt_length) != null ? Number(m.shirtLength ?? m.shirt_length) : undefined,
+    trouserLength: (m.trouserLength ?? m.trouser_length) != null ? Number(m.trouserLength ?? m.trouser_length) : undefined,
+    inseam: m.inseam != null ? Number(m.inseam) : undefined,
+    neck: m.neck != null ? Number(m.neck) : undefined,
+    notes: m.notes || undefined,
+    createdAt: m.created_at || m.createdAt,
+    updatedAt: m.updated_at || m.updatedAt,
+  };
+}
+
 export const measurementsService = {
   async getMeasurements(userId: string | undefined, userRole: string | undefined, page = 1, limit = 20) {
     const result = await fetchTableData({
       table: "measurements",
+      select: "id, user_id, title, gender, unit, chest, waist, hips, shoulder, sleeve_length, shirt_length, trouser_length, inseam, neck, notes, created_at, updated_at",
       userId,
       userRole,
       page,
@@ -18,14 +42,7 @@ export const measurementsService = {
       ascending: false,
     });
 
-    const records = (result.records || []).map((r: any) => ({
-      ...r,
-      profileName: r.title || r.profile_name || r.profileName,
-      sleeveLength: r.sleeve_length ?? r.sleeveLength,
-      shirtLength: r.shirt_length ?? r.shirtLength,
-      trouserLength: r.trouser_length ?? r.trouserLength,
-    }));
-
+    const records = (result.records || []).map(formatMeasurement);
     return { ...result, records };
   },
 
@@ -33,7 +50,7 @@ export const measurementsService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("measurements")
-      .select("*")
+      .select("id, user_id, title, gender, unit, chest, waist, hips, shoulder, sleeve_length, shirt_length, trouser_length, inseam, neck, notes, created_at, updated_at")
       .eq("id", measurementId)
       .single();
 
@@ -41,13 +58,7 @@ export const measurementsService = {
       throw new AppError(error.message, 400);
     }
     if (!data) return null;
-    return {
-      ...data,
-      profileName: data.title || data.profile_name || data.profileName,
-      sleeveLength: data.sleeve_length ?? data.sleeveLength,
-      shirtLength: data.shirt_length ?? data.shirtLength,
-      trouserLength: data.trouser_length ?? data.trouserLength,
-    };
+    return formatMeasurement(data);
   },
 
   async createMeasurement(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
@@ -88,12 +99,11 @@ export const measurementsService = {
     }
 
     if (error) throw new AppError(error.message, 400);
-    return {
+    return formatMeasurement({
       ...created,
-      profileName: created?.title || data.profileName,
-      shirtLength: data.shirtLength,
-      trouserLength: data.trouserLength,
-    };
+      shirt_length: data.shirtLength ?? created?.shirt_length,
+      trouser_length: data.trouserLength ?? created?.trouser_length,
+    });
   },
 
   async updateMeasurement(measurementId: string, userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>) {
@@ -127,12 +137,11 @@ export const measurementsService = {
     }
 
     if (error) throw new AppError(error.message, 400);
-    return {
+    return formatMeasurement({
       ...updated,
-      profileName: updated?.title || data.profileName,
-      shirtLength: data.shirtLength,
-      trouserLength: data.trouserLength,
-    };
+      shirt_length: data.shirtLength ?? updated?.shirt_length,
+      trouser_length: data.trouserLength ?? updated?.trouser_length,
+    });
   },
 
   async deleteMeasurement(measurementId: string, userId: string | undefined, userRole: string | undefined) {

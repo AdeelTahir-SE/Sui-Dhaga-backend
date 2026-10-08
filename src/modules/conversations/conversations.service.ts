@@ -40,7 +40,7 @@ export const conversationsService = {
 
     let query = client
       .from("conversations")
-      .select("*, participant1:profiles!participant1_id(*), participant2:profiles!participant2_id(*)", { count: "exact" });
+      .select("id, participant1_id, participant2_id, last_message, last_message_at, created_at, updated_at, participant1:profiles!participant1_id(id, full_name, avatar_url, role), participant2:profiles!participant2_id(id, full_name, avatar_url, role)", { count: "exact" });
 
     if (userId && userRole !== "admin") {
       query = query.or(`participant1_id.eq.${userId},participant2_id.eq.${userId}`);
@@ -65,7 +65,7 @@ export const conversationsService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("conversations")
-      .select("*, participant1:profiles!participant1_id(*), participant2:profiles!participant2_id(*), messages(*)")
+      .select("id, participant1_id, participant2_id, last_message, last_message_at, created_at, updated_at, participant1:profiles!participant1_id(id, full_name, avatar_url, role), participant2:profiles!participant2_id(id, full_name, avatar_url, role), messages(id, conversation_id, sender_id, text, attachments, is_read, read_at, created_at)")
       .eq("id", conversationId)
       .single();
 
@@ -79,7 +79,7 @@ export const conversationsService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("conversations")
-      .select("*, participant1:profiles!participant1_id(*), participant2:profiles!participant2_id(*), messages(*)")
+      .select("id, participant1_id, participant2_id, last_message, last_message_at, created_at, updated_at, participant1:profiles!participant1_id(id, full_name, avatar_url, role), participant2:profiles!participant2_id(id, full_name, avatar_url, role), messages(id, conversation_id, sender_id, text, attachments, is_read, read_at, created_at)")
       .or(`and(participant1_id.eq.${clientId},participant2_id.eq.${tailorId}),and(participant1_id.eq.${tailorId},participant2_id.eq.${clientId})`)
       .maybeSingle();
 
@@ -101,7 +101,7 @@ export const conversationsService = {
 
   async getOrCreateConversation(tailorId: string, clientId: string, initialMessage?: string, senderId?: string) {
     const client = getDbClient();
-    let conversation = await this.getConversationByParticipants(tailorId, clientId);
+    let conversation: any = await this.getConversationByParticipants(tailorId, clientId);
 
     if (!conversation) {
       const { data: created, error } = await client
@@ -111,7 +111,7 @@ export const conversationsService = {
           participant2_id: tailorId, // participant2 = tailor
           last_message: initialMessage || "",
         })
-        .select("*, participant1:profiles!participant1_id(*), participant2:profiles!participant2_id(*)")
+        .select("id, participant1_id, participant2_id, last_message, last_message_at, created_at, updated_at, participant1:profiles!participant1_id(id, full_name, avatar_url, role), participant2:profiles!participant2_id(id, full_name, avatar_url, role)")
         .single();
 
       if (error) throw new AppError(error.message, 400);
@@ -186,7 +186,7 @@ export const conversationsService = {
 
     let query = client
       .from("messages")
-      .select("*, sender:profiles!sender_id(*)", { count: "exact" })
+      .select("id, conversation_id, sender_id, text, attachments, is_read, read_at, created_at, sender:profiles!sender_id(id, full_name, avatar_url, role)", { count: "exact" })
       .eq("conversation_id", conversationId);
 
     let isReversed = false;
@@ -248,7 +248,8 @@ export const conversationsService = {
 
     const hasFiles = Boolean(Array.isArray(files) ? files.length > 0 : files);
     const initialText = (data.text as string) || (hasFiles ? "Attachment sent" : "Hello");
-    const conversation = await this.getOrCreateConversation(tailorId, clientId, initialText, senderId);
+    const conversation: any = await this.getOrCreateConversation(tailorId, clientId, initialText, senderId);
+    if (!conversation?.id) throw new AppError("Failed to initialize conversation", 500);
 
     return this.sendMessage(conversation.id, senderId, userRole, data, files);
   },
