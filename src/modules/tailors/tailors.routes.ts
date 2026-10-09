@@ -139,6 +139,18 @@ tailorsRoutes.patch("/tailors/:tailorId", requireAuth, requireRole("tailor", "ad
 /**
  * @swagger
  * /tailors/{tailorId}/services:
+ *   get:
+ *     summary: Get all services offered by a tailor
+ *     tags: [Tailors]
+ *     security: []
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: List of tailor services
  *   post:
  *     summary: Add a new service to tailor catalog
  *     tags: [Tailors]
@@ -147,7 +159,7 @@ tailorsRoutes.patch("/tailors/:tailorId", requireAuth, requireRole("tailor", "ad
  *       - in: path
  *         name: tailorId
  *         required: true
- *         schema: { type: string, format: uuid }
+ *         schema: { type: string }
  *     requestBody:
  *       required: true
  *       content:
@@ -164,7 +176,14 @@ tailorsRoutes.patch("/tailors/:tailorId", requireAuth, requireRole("tailor", "ad
  *       201:
  *         description: Service created
  */
+tailorsRoutes.get("/tailors/:tailorId/services", asyncHandler(tailorsController.getTailorServices));
 tailorsRoutes.post("/tailors/:tailorId/services", requireAuth, requireRole("tailor", "admin"), validate(tailorServiceSchema), asyncHandler(tailorsController.addTailorService));
+tailorsRoutes.put("/tailors/services/:serviceId", requireAuth, requireRole("tailor", "admin"), validate(tailorServiceSchema.partial()), asyncHandler(tailorsController.updateTailorService));
+tailorsRoutes.patch("/tailors/services/:serviceId", requireAuth, requireRole("tailor", "admin"), validate(tailorServiceSchema.partial()), asyncHandler(tailorsController.updateTailorService));
+tailorsRoutes.delete("/tailors/services/:serviceId", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.deleteTailorService));
+tailorsRoutes.put("/tailors/:tailorId/services/:serviceId", requireAuth, requireRole("tailor", "admin"), validate(tailorServiceSchema.partial()), asyncHandler(tailorsController.updateTailorService));
+tailorsRoutes.patch("/tailors/:tailorId/services/:serviceId", requireAuth, requireRole("tailor", "admin"), validate(tailorServiceSchema.partial()), asyncHandler(tailorsController.updateTailorService));
+tailorsRoutes.delete("/tailors/:tailorId/services/:serviceId", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.deleteTailorService));
 
 /**
  * @swagger

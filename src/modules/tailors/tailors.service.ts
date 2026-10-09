@@ -504,10 +504,11 @@ export const tailorsService = {
 
   async getTailorServices(tailorId: string) {
     const client = getDbClient();
+    const effectiveTailorId = (await this.resolveTailorId(tailorId)) || tailorId;
     const { data, error } = await client
       .from("tailor_services")
       .select("*")
-      .eq("tailor_id", tailorId)
+      .eq("tailor_id", effectiveTailorId)
       .eq("is_active", true);
 
     if (error) throw new AppError(error.message, 400);
@@ -516,15 +517,19 @@ export const tailorsService = {
 
   async addTailorService(tailorId: string, _userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
     const client = getDbClient();
+    const effectiveTailorId = (await this.resolveTailorId(tailorId, _userId)) || tailorId;
     const mapped = toSnakeCase(data);
     const { data: created, error } = await client
       .from("tailor_services")
-      .insert({ ...mapped, tailor_id: tailorId })
+      .insert({ ...mapped, tailor_id: effectiveTailorId })
       .select()
       .single();
 
     if (error) throw new AppError(error.message, 400);
-    this.invalidateTailorCache(tailorId);
+    this.invalidateTailorCache(effectiveTailorId);
+    if (tailorId !== effectiveTailorId) {
+      this.invalidateTailorCache(tailorId);
+    }
     return created;
   },
 
@@ -851,11 +856,12 @@ export const tailorsService = {
   },
 
   async uploadTailorBanner(tailorId: string, userId: string | undefined, userRole: string | undefined, file?: Express.Multer.File, data: Record<string, unknown> = {}) {
+    const effectiveTailorId = (await this.resolveTailorId(tailorId, userId)) || tailorId;
     let bannerUrl = (data.bannerUrl || data.banner) as string;
     if (file) {
       const fileExt = file.originalname?.split(".").pop() || "png";
       const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
-      const path = `${tailorId}/banner-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
+      const path = `${effectiveTailorId}/banner-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
       const { url } = await storageService.uploadFile("tailor-banners", path, file.buffer, file.mimetype);
       bannerUrl = url;
     }
@@ -868,7 +874,7 @@ export const tailorsService = {
     let query = client
       .from("tailors")
       .update({ banner_url: bannerUrl })
-      .eq("id", tailorId);
+      .eq("id", effectiveTailorId);
 
     if (userId && userRole !== "admin") {
       query = query.eq("user_id", userId);
@@ -876,8 +882,15 @@ export const tailorsService = {
 
     const { data: updated, error } = await query.select().single();
     if (error) throw new AppError(error.message, 400);
-    this.invalidateTailorCache(tailorId);
-    return updated;
+    this.invalidateTailorCache(effectiveTailorId);
+    if (tailorId !== effectiveTailorId) {
+      this.invalidateTailorCache(tailorId);
+    }
+    return {
+      ...(updated || {}),
+      bannerUrl,
+      banner_url: bannerUrl,
+    };
   },
 
   async deleteAvailabilitySlot(slotId: string, _userId: string | undefined, _userRole: string | undefined) {

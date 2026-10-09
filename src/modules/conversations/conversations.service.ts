@@ -75,12 +75,38 @@ export const conversationsService = {
     return data;
   },
 
+  async resolveParticipantUserId(id: string): Promise<string> {
+    if (!id) return id;
+    try {
+      const client = getDbClient();
+      const { data } = await client.from("tailors").select("user_id").eq("id", id).maybeSingle();
+      if (data?.user_id) return data.user_id;
+    } catch {}
+    return id;
+  },
+
   async getConversationByParticipants(tailorId: string, clientId: string, _userId?: string, _userRole?: string) {
     const client = getDbClient();
+    const resolvedTailor = await this.resolveParticipantUserId(tailorId);
+    const resolvedClient = await this.resolveParticipantUserId(clientId);
+
+    const tailorIds = Array.from(new Set([tailorId, resolvedTailor].filter(Boolean)));
+    const clientIds = Array.from(new Set([clientId, resolvedClient].filter(Boolean)));
+
+    const orConditions: string[] = [];
+    for (const c of clientIds) {
+      for (const t of tailorIds) {
+        orConditions.push(`and(participant1_id.eq.${c},participant2_id.eq.${t})`);
+        orConditions.push(`and(participant1_id.eq.${t},participant2_id.eq.${c})`);
+      }
+    }
+
     const { data, error } = await client
       .from("conversations")
       .select("id, participant1_id, participant2_id, last_message, last_message_at, created_at, updated_at, participant1:profiles!participant1_id(id, full_name, avatar_url, role), participant2:profiles!participant2_id(id, full_name, avatar_url, role), messages(id, conversation_id, sender_id, text, attachments, is_read, read_at, created_at)")
-      .or(`and(participant1_id.eq.${clientId},participant2_id.eq.${tailorId}),and(participant1_id.eq.${tailorId},participant2_id.eq.${clientId})`)
+      .or(orConditions.join(","))
+      .order("updated_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (error && error.code !== "PGRST116") {
@@ -104,11 +130,14 @@ export const conversationsService = {
     let conversation: any = await this.getConversationByParticipants(tailorId, clientId);
 
     if (!conversation) {
+      const resolvedTailor = await this.resolveParticipantUserId(tailorId);
+      const resolvedClient = await this.resolveParticipantUserId(clientId);
+
       const { data: created, error } = await client
         .from("conversations")
         .insert({
-          participant1_id: clientId, // participant1 = client
-          participant2_id: tailorId, // participant2 = tailor
+          participant1_id: resolvedClient, // participant1 = client
+          participant2_id: resolvedTailor, // participant2 = tailor
           last_message: initialMessage || "",
         })
         .select("id, participant1_id, participant2_id, last_message, last_message_at, created_at, updated_at, participant1:profiles!participant1_id(id, full_name, avatar_url, role), participant2:profiles!participant2_id(id, full_name, avatar_url, role)")
@@ -248,7 +277,7 @@ export const conversationsService = {
 
     const hasFiles = Boolean(Array.isArray(files) ? files.length > 0 : files);
     const initialText = (data.text as string) || (hasFiles ? "Attachment sent" : "Hello");
-    const conversation: any = await this.getOrCreateConversation(tailorId, clientId, initialText, senderId);
+    const conversation: any = await this.getOrCreateConversation(tailorId, clientId, initialText);
     if (!conversation?.id) throw new AppError("Failed to initialize conversation", 500);
 
     return this.sendMessage(conversation.id, senderId, userRole, data, files);
