@@ -8,6 +8,49 @@ import { storageService } from "../../services/storage.service.js";
 import { cacheService } from "../../services/cache.service.js";
 import { AppError } from "../../utils/app-error.js";
 
+export const CITY_COORDINATES: Record<string, { lat: number; lng: number }> = {
+  islamabad: { lat: 33.6844, lng: 73.0479 },
+  rawalpindi: { lat: 33.5651, lng: 73.0169 },
+  lahore: { lat: 31.5204, lng: 74.3587 },
+  karachi: { lat: 24.8607, lng: 67.0011 },
+  faisalabad: { lat: 31.4504, lng: 73.1350 },
+  multan: { lat: 30.1575, lng: 71.5249 },
+  peshawar: { lat: 34.0151, lng: 71.5249 },
+  quetta: { lat: 30.1798, lng: 66.9750 },
+  sialkot: { lat: 32.4945, lng: 74.5229 },
+  gujranwala: { lat: 32.1877, lng: 74.1945 },
+  delhi: { lat: 28.6139, lng: 77.2090 },
+  mumbai: { lat: 19.0760, lng: 72.8777 },
+};
+
+export function getDeterministicOffset(strId: string): { latOffset: number; lngOffset: number } {
+  let hash = 0;
+  for (let i = 0; i < strId.length; i++) {
+    hash = (hash << 5) - hash + strId.charCodeAt(i);
+    hash |= 0;
+  }
+  const normalized1 = ((Math.abs(hash) % 1000) / 1000) - 0.5;
+  const normalized2 = ((Math.abs(hash >> 3) % 1000) / 1000) - 0.5;
+  return {
+    latOffset: normalized1 * 0.04,
+    lngOffset: normalized2 * 0.04,
+  };
+}
+
+export interface GetTailorsOptions {
+  page?: number;
+  limit?: number;
+  search?: string;
+  city?: string;
+  specialty?: string;
+  minRating?: number;
+  verified?: boolean;
+  lat?: number;
+  lng?: number;
+  radiusKm?: number;
+  organization?: string;
+}
+
 export const tailorsService = {
   invalidateTailorCache(tailorId?: string) {
     if (tailorId) {
@@ -16,43 +59,166 @@ export const tailorsService = {
     cacheService.delByPattern("tailors:*");
   },
 
-  async getTailors(page = 1, limit = 20, organization?: string) {
-    const cacheKey = `tailors:list:${page}:${limit}:${organization || "all"}`;
+  async getTailors(
+    pageOrOptions: number | GetTailorsOptions = 1,
+    limitArg = 20,
+    organizationArg?: string
+  ) {
+    let options: GetTailorsOptions;
+    if (typeof pageOrOptions === "object" && pageOrOptions !== null) {
+      options = pageOrOptions;
+    } else {
+      options = {
+        page: pageOrOptions,
+        limit: limitArg,
+        organization: organizationArg,
+      };
+    }
+
+    const page = Math.max(1, options.page || 1);
+    const limit = Math.min(100, Math.max(1, options.limit || 20));
+
+    const cacheKey = `tailors:list:${JSON.stringify({ ...options, page, limit })}`;
     const cached = cacheService.get<any>(cacheKey);
     if (cached) return cached;
 
-    const filters: Record<string, unknown> = {};
-    if (organization) {
-      filters.organization_name = organization;
+    const client = getDbClient();
+    let query = client
+      .from("tailors")
+      .select(
+        "id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, organization_name, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address), services:tailor_services(id, title, price, description, category, is_active)",
+        { count: "exact" }
+      );
+
+    if (options.organization) {
+      query = query.ilike("organization_name", `%${options.organization}%`);
     }
 
-    const result = await fetchTableData({
-      table: "tailors",
-      select: "id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, organization_name, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address), services:tailor_services(id, title, price, description, category, is_active)",
-      page,
-      limit,
-      orderColumn: "rating",
-      ascending: false,
-      filters: Object.keys(filters).length > 0 ? filters : undefined,
-    });
+    if (options.city && options.city.toLowerCase() !== "all") {
+      query = query.ilike("city", `%${options.city}%`);
+    }
 
-    const records = ((result.records || []) as any[]).map((t) => {
-      const activeServices = Array.isArray(t.services) ? t.services.filter((s: any) => s.is_active !== false) : [];
+    if (typeof options.minRating === "number" && !isNaN(options.minRating)) {
+      query = query.gte("rating", options.minRating);
+    }
+
+    if (options.verified) {
+      query = query.or("verified.eq.true,verification_status.eq.verified");
+    }
+
+    if (options.specialty && options.specialty.trim()) {
+      query = query.contains("specialties", [options.specialty.trim()]);
+    }
+
+    if (options.search && options.search.trim()) {
+      const q = options.search.trim().replace(/[,()]/g, "");
+      if (q) {
+        query = query.or(`shop_name.ilike.%${q}%,city.ilike.%${q}%,address.ilike.%${q}%,bio.ilike.%${q}%`);
+      }
+    }
+
+    query = query.order("rating", { ascending: false });
+
+    const hasRadiusFilter =
+      typeof options.radiusKm === "number" &&
+      !isNaN(options.radiusKm) &&
+      typeof options.lat === "number" &&
+      typeof options.lng === "number";
+
+    let rawData: any[] = [];
+    let totalCount = 0;
+
+    if (hasRadiusFilter) {
+      const { data, error, count } = await query;
+      if (error) throw new AppError(error.message, 400);
+      rawData = data || [];
+      totalCount = count || rawData.length;
+    } else {
+      const offset = (page - 1) * limit;
+      const { data, error, count } = await query.range(offset, offset + limit - 1);
+      if (error) throw new AppError(error.message, 400);
+      rawData = data || [];
+      totalCount = count || rawData.length;
+    }
+
+    const userLat = typeof options.lat === "number" && !isNaN(options.lat) ? options.lat : undefined;
+    const userLng = typeof options.lng === "number" && !isNaN(options.lng) ? options.lng : undefined;
+
+    let records = rawData.map((t: any) => {
+      const activeServices = Array.isArray(t.services)
+        ? t.services.filter((s: any) => s.is_active !== false)
+        : [];
       const startPrice = activeServices[0]?.price ?? (t.services?.[0]?.price ?? null);
+
+      let lat = typeof t.latitude === "number" && !isNaN(t.latitude) ? t.latitude : undefined;
+      let lng = typeof t.longitude === "number" && !isNaN(t.longitude) ? t.longitude : undefined;
+
+      if (lat === undefined || lng === undefined) {
+        const cityKey = (typeof t.city === "string" ? t.city.trim().toLowerCase() : "islamabad") || "islamabad";
+        const baseCoords = CITY_COORDINATES[cityKey] || CITY_COORDINATES["islamabad"] || CITY_COORDINATES["lahore"];
+        const offset = getDeterministicOffset(String(t.id || t.shop_name || "default"));
+        lat = parseFloat((baseCoords.lat + offset.latOffset).toFixed(6));
+        lng = parseFloat((baseCoords.lng + offset.lngOffset).toFixed(6));
+      }
+
+      let distKm: number | null = null;
+      let distStr: string | null = null;
+      if (userLat !== undefined && userLng !== undefined && lat !== undefined && lng !== undefined) {
+        const dLat = ((lat - userLat) * Math.PI) / 180;
+        const dLng = ((lng - userLng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((userLat * Math.PI) / 180) *
+            Math.cos((lat * Math.PI) / 180) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        distKm = parseFloat((6371 * c).toFixed(1));
+        distStr = `${distKm} km away`;
+      }
+
       return {
         ...t,
+        latitude: lat,
+        longitude: lng,
         starting_price: startPrice,
         startingPrice: startPrice,
         services: t.services || [],
-        location: typeof t.location === "object" && t.location !== null ? t.location : {
-          city: t.city,
-          address: t.address,
-          latitude: t.latitude,
-          longitude: t.longitude,
-        },
+        location:
+          typeof t.location === "object" && t.location !== null
+            ? t.location
+            : {
+                city: t.city,
+                address: t.address,
+                latitude: lat,
+                longitude: lng,
+              },
+        distance_km: distKm ?? (typeof t.distance_km === "number" ? t.distance_km : null),
+        distance: distStr ?? (typeof t.distance === "string" ? t.distance : null),
       };
     });
-    const enrichedResult = { ...result, records };
+
+    if (hasRadiusFilter && options.radiusKm) {
+      const radiusLimit = options.radiusKm;
+      records = records.filter(
+        (t) => typeof t.distance_km === "number" && t.distance_km <= radiusLimit
+      );
+      records.sort((a, b) => {
+        const distA = typeof a.distance_km === "number" ? a.distance_km : 999999;
+        const distB = typeof b.distance_km === "number" ? b.distance_km : 999999;
+        return distA - distB;
+      });
+      totalCount = records.length;
+      const offset = (page - 1) * limit;
+      records = records.slice(offset, offset + limit);
+    }
+
+    const enrichedResult = {
+      records,
+      page,
+      limit,
+      total: totalCount,
+    };
 
     cacheService.set(cacheKey, enrichedResult, 60);
     return enrichedResult;
@@ -165,11 +331,18 @@ export const tailorsService = {
       });
     }
 
-    const radiusKm = Math.min(25, params.radiusKm || 25);
+    const radiusKm = Math.min(100, params.radiusKm || 25);
     records = records
       .map((t) => {
-        const tLat = typeof t.latitude === "number" ? t.latitude : undefined;
-        const tLng = typeof t.longitude === "number" ? t.longitude : undefined;
+        let tLat = typeof t.latitude === "number" ? t.latitude : undefined;
+        let tLng = typeof t.longitude === "number" ? t.longitude : undefined;
+        if (tLat === undefined || tLng === undefined) {
+          const cityKey = (typeof t.city === "string" ? t.city.trim().toLowerCase() : "islamabad") || "islamabad";
+          const baseCoords = CITY_COORDINATES[cityKey] || CITY_COORDINATES["islamabad"] || CITY_COORDINATES["lahore"];
+          const offset = getDeterministicOffset(String(t.id || t.shop_name || "default"));
+          tLat = parseFloat((baseCoords.lat + offset.latOffset).toFixed(6));
+          tLng = parseFloat((baseCoords.lng + offset.lngOffset).toFixed(6));
+        }
         if (typeof tLat === "number" && typeof tLng === "number") {
           const dLat = ((tLat - params.lat) * Math.PI) / 180;
           const dLng = ((tLng - params.lng) * Math.PI) / 180;
@@ -183,6 +356,8 @@ export const tailorsService = {
           const distanceKm = parseFloat((6371 * c).toFixed(1));
           return {
             ...t,
+            latitude: tLat,
+            longitude: tLng,
             distance_km: distanceKm,
             distance: `${distanceKm} km away`,
           };

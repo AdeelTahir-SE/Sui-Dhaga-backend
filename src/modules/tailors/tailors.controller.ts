@@ -1,11 +1,45 @@
 import type { RequestHandler } from "express";
 import { paginated, success } from "../../utils/api-response.js";
 import { asString } from "../../utils/resource-helper.js";
-import { tailorsService } from "./tailors.service.js";
+import {
+  tailorsService,
+  CITY_COORDINATES,
+  getDeterministicOffset,
+} from "./tailors.service.js";
 
 export const getTailors: RequestHandler = async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+  const search =
+    typeof req.query.search === "string"
+      ? req.query.search.trim()
+      : typeof req.query.q === "string"
+      ? req.query.q.trim()
+      : undefined;
+  const city =
+    typeof req.query.city === "string" && req.query.city.trim().toLowerCase() !== "all"
+      ? req.query.city.trim()
+      : undefined;
+  const specialty =
+    typeof req.query.specialty === "string" && req.query.specialty.trim()
+      ? req.query.specialty.trim()
+      : undefined;
+  const minRating =
+    req.query.minRating !== undefined && !isNaN(Number(req.query.minRating))
+      ? Number(req.query.minRating)
+      : req.query.rating !== undefined && !isNaN(Number(req.query.rating))
+      ? Number(req.query.rating)
+      : undefined;
+  const verified =
+    req.query.verified === "true" || String(req.query.verified) === "true";
+  let userLat = Number(req.query.lat);
+  let userLng = Number(req.query.lng);
+  const radius =
+    req.query.radius !== undefined && !isNaN(Number(req.query.radius))
+      ? Number(req.query.radius)
+      : req.query.radiusKm !== undefined && !isNaN(Number(req.query.radiusKm))
+      ? Number(req.query.radiusKm)
+      : undefined;
   const organization =
     typeof req.query.organization === "string"
       ? req.query.organization
@@ -14,16 +48,40 @@ export const getTailors: RequestHandler = async (req, res) => {
       : typeof req.query.organizationName === "string"
       ? req.query.organizationName
       : undefined;
-  const result = await tailorsService.getTailors(page, limit, organization);
+
+  if (isNaN(userLat) || isNaN(userLng)) {
+    if (city) {
+      const baseCoords = CITY_COORDINATES[city.toLowerCase()] || CITY_COORDINATES["islamabad"] || CITY_COORDINATES["lahore"];
+      if (baseCoords) {
+        userLat = baseCoords.lat;
+        userLng = baseCoords.lng;
+      }
+    }
+  }
+
+  const result = await tailorsService.getTailors({
+    page,
+    limit,
+    search,
+    city,
+    specialty,
+    minRating,
+    verified,
+    lat: !isNaN(userLat) ? userLat : undefined,
+    lng: !isNaN(userLng) ? userLng : undefined,
+    radiusKm: radius,
+    organization,
+  });
+
   paginated(res, result.records, page, limit, result.total, "Tailors fetched successfully");
 };
 
 export const getNearbyTailors: RequestHandler = async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-  const userLat = Number(req.query.lat);
-  const userLng = Number(req.query.lng);
-  const radius = Math.min(25, Math.max(1, Number(req.query.radius) || 25));
+  let userLat = Number(req.query.lat);
+  let userLng = Number(req.query.lng);
+  const radius = Math.min(100, Math.max(1, Number(req.query.radius) || 25));
   const city = typeof req.query.city === "string" && req.query.city.toLowerCase() !== "all" ? req.query.city : undefined;
   const search = typeof req.query.search === "string" ? req.query.search : typeof req.query.q === "string" ? req.query.q : undefined;
   const minRating = req.query.minRating ? Number(req.query.minRating) : undefined;
@@ -35,6 +93,16 @@ export const getNearbyTailors: RequestHandler = async (req, res) => {
       : typeof req.query.organizationName === "string"
       ? req.query.organizationName
       : undefined;
+
+  if (isNaN(userLat) || isNaN(userLng)) {
+    if (city) {
+      const baseCoords = CITY_COORDINATES[city.toLowerCase()] || CITY_COORDINATES["islamabad"] || CITY_COORDINATES["lahore"];
+      if (baseCoords) {
+        userLat = baseCoords.lat;
+        userLng = baseCoords.lng;
+      }
+    }
+  }
 
   if (!isNaN(userLat) && !isNaN(userLng)) {
     const result = await tailorsService.getNearbyTailors({
@@ -51,38 +119,16 @@ export const getNearbyTailors: RequestHandler = async (req, res) => {
     return paginated(res, result.records, page, limit, result.total, "Nearby tailors fetched successfully");
   }
 
-  const result = await tailorsService.getTailors(page, limit, organization);
+  const result = await tailorsService.getTailors({
+    page,
+    limit,
+    search,
+    city,
+    minRating,
+    organization,
+  });
   paginated(res, result.records, page, limit, result.total, "Tailors fetched successfully");
 };
-
-const CITY_COORDINATES: Record<string, { lat: number; lng: number }> = {
-  lahore: { lat: 31.5204, lng: 74.3587 },
-  karachi: { lat: 24.8607, lng: 67.0011 },
-  islamabad: { lat: 33.6844, lng: 73.0479 },
-  rawalpindi: { lat: 33.5651, lng: 73.0169 },
-  faisalabad: { lat: 31.4504, lng: 73.1350 },
-  multan: { lat: 30.1575, lng: 71.5249 },
-  peshawar: { lat: 34.0151, lng: 71.5249 },
-  quetta: { lat: 30.1798, lng: 66.9750 },
-  sialkot: { lat: 32.4945, lng: 74.5229 },
-  gujranwala: { lat: 32.1877, lng: 74.1945 },
-  delhi: { lat: 28.6139, lng: 77.2090 },
-  mumbai: { lat: 19.0760, lng: 72.8777 },
-};
-
-function getDeterministicOffset(strId: string): { latOffset: number; lngOffset: number } {
-  let hash = 0;
-  for (let i = 0; i < strId.length; i++) {
-    hash = (hash << 5) - hash + strId.charCodeAt(i);
-    hash |= 0;
-  }
-  const normalized1 = ((Math.abs(hash) % 1000) / 1000) - 0.5;
-  const normalized2 = ((Math.abs(hash >> 3) % 1000) / 1000) - 0.5;
-  return {
-    latOffset: normalized1 * 0.04,
-    lngOffset: normalized2 * 0.04,
-  };
-}
 
 export const getTailorsMap: RequestHandler = async (req, res) => {
   const cityQuery = typeof req.query.city === "string" ? req.query.city.trim().toLowerCase() : "";
