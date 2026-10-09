@@ -292,14 +292,6 @@ export const getMyTailorProfile: RequestHandler = async (req, res) => {
   success(res, tailor, "Tailor profile fetched successfully");
 };
 
-export const getMyTailorProfile: RequestHandler = async (req, res) => {
-  const tailor = await tailorsService.getTailorByUserId(req.user?.id);
-  if (!tailor) {
-    return res.status(404).json({ success: false, message: "Tailor profile not found" });
-  }
-  success(res, tailor, "Tailor profile fetched successfully");
-};
-
 export const getTailorById: RequestHandler = async (req, res) => {
   const tailor = await tailorsService.getTailorById(asString(req.params.tailorId));
   success(res, tailor, "Tailor fetched successfully");

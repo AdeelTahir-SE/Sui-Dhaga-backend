@@ -217,13 +217,14 @@ export const tailorsService = {
       throw new AppError(error.message, 400);
     }
     if (data) {
+      const d = data as any;
       const enriched = {
-        ...data,
-        location: typeof data.location === "object" && data.location !== null ? data.location : {
-          city: data.city,
-          address: data.address,
-          latitude: data.latitude,
-          longitude: data.longitude,
+        ...d,
+        location: typeof d.location === "object" && d.location !== null ? d.location : {
+          city: d.city,
+          address: d.address,
+          latitude: d.latitude,
+          longitude: d.longitude,
         },
       };
       cacheService.set(cacheKey, enriched, 60);
@@ -245,13 +246,14 @@ export const tailorsService = {
       throw new AppError(error.message, 400);
     }
     if (data) {
+      const d = data as any;
       return {
-        ...data,
-        location: typeof data.location === "object" && data.location !== null ? data.location : {
-          city: data.city,
-          address: data.address,
-          latitude: data.latitude,
-          longitude: data.longitude,
+        ...d,
+        location: typeof d.location === "object" && d.location !== null ? d.location : {
+          city: d.city,
+          address: d.address,
+          latitude: d.latitude,
+          longitude: d.longitude,
         },
       };
     }
