@@ -1,19 +1,24 @@
 import { z } from "zod";
 
+const optionalMeasurementNumber = z.preprocess(
+  (val) => (val === "" || val === null || val === undefined ? undefined : Number(val)),
+  z.number().positive().optional()
+);
+
 export const createMeasurementSchema = z
   .object({
     title: z.string().optional(),
     profileName: z.string().optional(),
     unit: z.enum(["in", "cm", "inches"]).default("in"),
-    chest: z.number().positive().optional(),
-    waist: z.number().positive().optional(),
-    hips: z.number().positive().optional(),
-    shoulder: z.number().positive().optional(),
-    sleeveLength: z.number().positive().optional(),
-    shirtLength: z.number().positive().optional(),
-    trouserLength: z.number().positive().optional(),
-    inseam: z.number().positive().optional(),
-    neck: z.number().positive().optional(),
+    chest: optionalMeasurementNumber,
+    waist: optionalMeasurementNumber,
+    hips: optionalMeasurementNumber,
+    shoulder: optionalMeasurementNumber,
+    sleeveLength: optionalMeasurementNumber,
+    shirtLength: optionalMeasurementNumber,
+    trouserLength: optionalMeasurementNumber,
+    inseam: optionalMeasurementNumber,
+    neck: optionalMeasurementNumber,
     notes: z.string().optional(),
   })
   .refine((data) => Boolean(data.title || data.profileName), {
@@ -31,15 +36,15 @@ export const updateMeasurementSchema = z
     title: z.string().optional(),
     profileName: z.string().optional(),
     unit: z.enum(["in", "cm", "inches"]).optional(),
-    chest: z.number().positive().optional(),
-    waist: z.number().positive().optional(),
-    hips: z.number().positive().optional(),
-    shoulder: z.number().positive().optional(),
-    sleeveLength: z.number().positive().optional(),
-    shirtLength: z.number().positive().optional(),
-    trouserLength: z.number().positive().optional(),
-    inseam: z.number().positive().optional(),
-    neck: z.number().positive().optional(),
+    chest: optionalMeasurementNumber,
+    waist: optionalMeasurementNumber,
+    hips: optionalMeasurementNumber,
+    shoulder: optionalMeasurementNumber,
+    sleeveLength: optionalMeasurementNumber,
+    shirtLength: optionalMeasurementNumber,
+    trouserLength: optionalMeasurementNumber,
+    inseam: optionalMeasurementNumber,
+    neck: optionalMeasurementNumber,
     notes: z.string().optional(),
   })
   .transform((data) => ({

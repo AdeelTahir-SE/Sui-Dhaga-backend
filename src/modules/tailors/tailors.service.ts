@@ -225,8 +225,12 @@ export const tailorsService = {
     }
     if (data) {
       const d = data as any;
+      const activeServices = Array.isArray(d.services) ? d.services.filter((s: any) => s.is_active !== false) : [];
+      const startPrice = activeServices[0]?.price ?? (d.services?.[0]?.price ?? null);
       const enriched = {
         ...d,
+        starting_price: startPrice,
+        startingPrice: startPrice,
         location: typeof d.location === "object" && d.location !== null ? d.location : {
           city: d.city,
           address: d.address,
@@ -254,8 +258,12 @@ export const tailorsService = {
     }
     if (data) {
       const d = data as any;
+      const activeServices = Array.isArray(d.services) ? d.services.filter((s: any) => s.is_active !== false) : [];
+      const startPrice = activeServices[0]?.price ?? (d.services?.[0]?.price ?? null);
       return {
         ...d,
+        starting_price: startPrice,
+        startingPrice: startPrice,
         location: typeof d.location === "object" && d.location !== null ? d.location : {
           city: d.city,
           address: d.address,
