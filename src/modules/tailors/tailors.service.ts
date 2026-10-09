@@ -28,7 +28,7 @@ export const tailorsService = {
 
     const result = await fetchTableData({
       table: "tailors",
-      select: "id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, organization_name, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address)",
+      select: "id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, organization_name, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address), services:tailor_services(id, title, price, description, category, is_active)",
       page,
       limit,
       orderColumn: "rating",
@@ -36,15 +36,22 @@ export const tailorsService = {
       filters: Object.keys(filters).length > 0 ? filters : undefined,
     });
 
-    const records = ((result.records || []) as any[]).map((t) => ({
-      ...t,
-      location: typeof t.location === "object" && t.location !== null ? t.location : {
-        city: t.city,
-        address: t.address,
-        latitude: t.latitude,
-        longitude: t.longitude,
-      },
-    }));
+    const records = ((result.records || []) as any[]).map((t) => {
+      const activeServices = Array.isArray(t.services) ? t.services.filter((s: any) => s.is_active !== false) : [];
+      const startPrice = activeServices[0]?.price ?? (t.services?.[0]?.price ?? null);
+      return {
+        ...t,
+        starting_price: startPrice,
+        startingPrice: startPrice,
+        services: t.services || [],
+        location: typeof t.location === "object" && t.location !== null ? t.location : {
+          city: t.city,
+          address: t.address,
+          latitude: t.latitude,
+          longitude: t.longitude,
+        },
+      };
+    });
     const enrichedResult = { ...result, records };
 
     cacheService.set(cacheKey, enrichedResult, 60);
@@ -314,6 +321,12 @@ export const tailorsService = {
       cleanData.longitude = Number(cleanData.longitude);
     }
 
+    const rawPrice = cleanData.startingPrice ?? cleanData.starting_price ?? cleanData.price;
+    const startingPriceNum = rawPrice !== undefined && rawPrice !== null && !isNaN(Number(rawPrice)) && Number(rawPrice) > 0 ? Number(rawPrice) : null;
+    delete cleanData.startingPrice;
+    delete cleanData.starting_price;
+    delete cleanData.price;
+
     const mapped = toSnakeCase(cleanData);
     const { data: created, error } = await client
       .from("tailors")
@@ -322,9 +335,29 @@ export const tailorsService = {
       .single();
 
     if (error) throw new AppError(error.message, 400);
+
+    // Sync stitching price to tailor_services catalog
+    if (created?.id && startingPriceNum && startingPriceNum > 0) {
+      try {
+        const specArr = Array.isArray(created.specialties) ? created.specialties : [];
+        const firstSpec = specArr[0] || "Custom Stitching";
+        await client.from("tailor_services").insert({
+          tailor_id: created.id,
+          title: firstSpec,
+          price: startingPriceNum,
+          category: String(firstSpec).toLowerCase(),
+          is_active: true,
+        });
+      } catch (serviceErr) {
+        console.warn("Could not sync initial service price:", serviceErr);
+      }
+    }
+
     this.invalidateTailorCache();
     return {
       ...created,
+      starting_price: startingPriceNum,
+      startingPrice: startingPriceNum,
       location: {
         city: created.city,
         address: created.address,
@@ -352,6 +385,12 @@ export const tailorsService = {
     }
     delete cleanData.organization;
     delete cleanData.organization_name;
+
+    const rawPrice = cleanData.startingPrice ?? cleanData.starting_price ?? cleanData.price;
+    const startingPriceNum = rawPrice !== undefined && rawPrice !== null && !isNaN(Number(rawPrice)) && Number(rawPrice) > 0 ? Number(rawPrice) : null;
+    delete cleanData.startingPrice;
+    delete cleanData.starting_price;
+    delete cleanData.price;
 
     if (typeof cleanData.location === "object" && cleanData.location !== null) {
       const loc = cleanData.location as Record<string, unknown>;
@@ -392,12 +431,49 @@ export const tailorsService = {
       }
       throw new AppError(error.message, 400);
     }
+
+    // Sync stitching price to tailor_services catalog
+    if (startingPriceNum && startingPriceNum > 0) {
+      try {
+        const { data: existingServices } = await client
+          .from("tailor_services")
+          .select("id, price, title")
+          .eq("tailor_id", effectiveTailorId)
+          .eq("is_active", true)
+          .limit(1);
+
+        const specArr = Array.isArray(updated.specialties) ? updated.specialties : [];
+        const firstSpec = specArr[0] || "Custom Stitching";
+
+        if (existingServices && existingServices.length > 0) {
+          await client
+            .from("tailor_services")
+            .update({ price: startingPriceNum, title: firstSpec || existingServices[0].title, updated_at: new Date().toISOString() })
+            .eq("id", existingServices[0].id);
+        } else {
+          await client
+            .from("tailor_services")
+            .insert({
+              tailor_id: effectiveTailorId,
+              title: firstSpec,
+              price: startingPriceNum,
+              category: String(firstSpec).toLowerCase(),
+              is_active: true,
+            });
+        }
+      } catch (serviceErr) {
+        console.warn("Could not sync stitching price to tailor_services:", serviceErr);
+      }
+    }
+
     this.invalidateTailorCache(effectiveTailorId);
     if (tailorId !== effectiveTailorId) {
       this.invalidateTailorCache(tailorId);
     }
     return {
       ...updated,
+      starting_price: startingPriceNum,
+      startingPrice: startingPriceNum,
       location: {
         city: updated.city,
         address: updated.address,

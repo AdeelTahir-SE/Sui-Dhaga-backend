@@ -303,27 +303,40 @@ export const ordersService = {
 
   async getOrderById(orderId: string, userId: string | undefined, userRole: string | undefined) {
     const client = getDbClient();
-    const { data, error } = await client
+    const cleanId = String(orderId || "").replace(/^[#%23\s]+/, "").trim();
+    if (!cleanId) throw new AppError("Order ID is required", 400);
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
+    let query = client
       .from("orders")
-      .select("id, customer_id, tailor_id, service_id, design_id, measurement_id, item_name, total_amount, status, delivery_date, additional_notes, design_images, measurements, created_at, updated_at, customer:profiles!customer_id(id, full_name, phone, avatar_url, address), tailor:tailors!tailor_id(id, user_id, shop_name, rating, review_count, city, address, banner_url, verified, specialties, profile:profiles(id, full_name, phone, avatar_url)), service:tailor_services!service_id(id, title, price, category), design:designs!design_id(id, title, image_url), measurement:measurements!measurement_id(id, title, chest, waist, hips, shoulder, sleeve_length, inseam, neck), tracking:order_tracking(id, status, description, location, created_at)")
-      .eq("id", orderId)
-      .maybeSingle();
+      .select("id, customer_id, tailor_id, item_name, total_amount, status, delivery_date, additional_notes, design_images, measurements, created_at, updated_at, customer:profiles!customer_id(id, full_name, phone, avatar_url, address), tailor:tailors!tailor_id(id, user_id, shop_name, rating, review_count, city, address, banner_url, verified, profile:profiles(id, full_name, phone, avatar_url))");
+
+    if (isUuid) {
+      query = query.eq("id", cleanId);
+    } else {
+      query = query.ilike("id", `${cleanId}%`);
+    }
+
+    const { data: records, error } = await query.limit(1);
 
     if (error && error.code !== "PGRST116") {
       throw new AppError(error.message, 400);
     }
+    const data = records?.[0];
     if (!data) return null;
 
     if (userId && userRole !== "admin") {
-      if (userRole === "customer" && data.customer_id !== userId) {
-        throw new AppError("You do not have permission to access this order", 403);
-      }
-      if (userRole === "tailor") {
+      const isCustomerOwner = data.customer_id === userId;
+      let isTailorOwner = data.tailor_id === userId;
+      if (!isTailorOwner) {
         const { data: tailor } = await client.from("tailors").select("id").eq("user_id", userId).maybeSingle();
-        const tailorId = tailor?.id || userId;
-        if (data.tailor_id !== tailorId) {
-          throw new AppError("You do not have permission to access this order", 403);
+        if (tailor?.id && (data.tailor_id === tailor.id || data.tailor_id === userId)) {
+          isTailorOwner = true;
         }
+      }
+
+      if (!isCustomerOwner && !isTailorOwner) {
+        throw new AppError("You do not have permission to access this order", 403);
       }
     }
 

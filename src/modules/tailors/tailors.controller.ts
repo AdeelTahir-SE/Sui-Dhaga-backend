@@ -84,76 +84,6 @@ function getDeterministicOffset(strId: string): { latOffset: number; lngOffset: 
   };
 }
 
-const DEFAULT_FALLBACK_TAILORS: Array<Record<string, unknown>> = [
-  {
-    id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    user_id: "22222222-2222-2222-2222-222222222222",
-    shop_name: "Royal Heritage Tailors",
-    specialties: ["bridal", "lehenga", "sherwani", "formal-wear"],
-    city: "Lahore",
-    address: "Shop 12, Anarkali Bazaar, Lahore",
-    experience_years: 22,
-    bio: "Master artisans in hand embroidery and bespoke bridal wear.",
-    rating: 4.9,
-    review_count: 38,
-    verification_status: "verified",
-    verified: true,
-    latitude: 31.5714,
-    longitude: 74.3087,
-    organization_name: "sundrop",
-    profile: {
-      id: "22222222-2222-2222-2222-222222222222",
-      full_name: "Master Tariq",
-      avatar_url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
-      phone: "+923007654321",
-    },
-  },
-  {
-    id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-    user_id: "33333333-3333-3333-3333-333333333333",
-    shop_name: "Zainab Haute Couture",
-    specialties: ["kurta", "shalwar-kameez", "casual-wear", "western-fusion"],
-    city: "Islamabad",
-    address: "Plaza 4, F-7 Markaz, Islamabad",
-    experience_years: 8,
-    bio: "Modern tailoring for contemporary women and men.",
-    rating: 4.7,
-    review_count: 19,
-    verification_status: "verified",
-    verified: true,
-    latitude: 33.7215,
-    longitude: 73.0563,
-    profile: {
-      id: "33333333-3333-3333-3333-333333333333",
-      full_name: "Zainab Stitching Studio",
-      avatar_url: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150",
-      phone: "+923009876543",
-    },
-  },
-  {
-    id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-    user_id: "44444444-4444-4444-4444-444444444444",
-    shop_name: "Gulberg Bespoke Studio",
-    specialties: ["suits", "formal-wear", "alterations", "tuxedos"],
-    city: "Lahore",
-    address: "Main Boulevard, Gulberg III, Lahore",
-    experience_years: 15,
-    bio: "Finest Italian cut suits and modern silhouettes.",
-    rating: 4.8,
-    review_count: 24,
-    verification_status: "verified",
-    verified: true,
-    latitude: 31.5104,
-    longitude: 74.3440,
-    profile: {
-      id: "44444444-4444-4444-4444-444444444444",
-      full_name: "Master Aslam",
-      avatar_url: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150",
-      phone: "+923004567890",
-    },
-  },
-];
-
 export const getTailorsMap: RequestHandler = async (req, res) => {
   const cityQuery = typeof req.query.city === "string" ? req.query.city.trim().toLowerCase() : "";
   const searchQuery = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : "";
@@ -194,14 +124,6 @@ export const getTailorsMap: RequestHandler = async (req, res) => {
   } else {
     const result = await tailorsService.getTailors(1, 100);
     records = result.records as Array<Record<string, unknown>>;
-  }
-
-  // Ensure default seed tailors exist if database is sparse
-  const existingIds = new Set(records.map((r) => String(r.id || "")));
-  for (const seed of DEFAULT_FALLBACK_TAILORS) {
-    if (!existingIds.has(String(seed.id))) {
-      records.push(seed);
-    }
   }
 
   records = records.map((t) => {

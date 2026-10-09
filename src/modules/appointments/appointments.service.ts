@@ -19,7 +19,7 @@ export const appointmentsService = {
 
     let query = client
       .from("appointments")
-      .select("id, customer_id, tailor_id, service_id, appointment_date, appointment_time, notes, status, created_at, updated_at, customer:profiles!customer_id(id, full_name, avatar_url, phone), tailor:tailors!tailor_id(id, user_id, shop_name, rating, address, city, banner_url), service:tailor_services!service_id(id, title, price, duration, category)", { count: "exact" });
+      .select("id, customer_id, tailor_id, service_id, appointment_date, appointment_time, notes, status, created_at, updated_at, customer:profiles!customer_id(id, full_name, avatar_url, phone), tailor:tailors!tailor_id(id, user_id, shop_name, rating, address, city, banner_url), service:tailor_services!service_id(id, title, price, category)", { count: "exact" });
 
     if (userId && userRole !== "admin") {
       if (userRole === "tailor") {
@@ -62,7 +62,7 @@ export const appointmentsService = {
     const client = getDbClient();
     const { data, error } = await client
       .from("appointments")
-      .select("id, customer_id, tailor_id, service_id, appointment_date, appointment_time, notes, status, created_at, updated_at, customer:profiles!customer_id(id, full_name, avatar_url, phone), tailor:tailors!tailor_id(id, user_id, shop_name, rating, address, city, banner_url), service:tailor_services!service_id(id, title, price, duration, category)")
+      .select("id, customer_id, tailor_id, service_id, appointment_date, appointment_time, notes, status, created_at, updated_at, customer:profiles!customer_id(id, full_name, avatar_url, phone), tailor:tailors!tailor_id(id, user_id, shop_name, rating, address, city, banner_url), service:tailor_services!service_id(id, title, price, category)")
       .eq("id", appointmentId)
       .single();
 
