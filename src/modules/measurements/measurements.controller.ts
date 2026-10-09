@@ -6,7 +6,8 @@ import { measurementsService } from "./measurements.service.js";
 export const getMeasurements: RequestHandler = async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-  const result = await measurementsService.getMeasurements(req.user?.id, req.userRole, page, limit);
+  const targetUserId = req.userRole === "admin" && req.query.userId ? String(req.query.userId) : req.user?.id;
+  const result = await measurementsService.getMeasurements(targetUserId, req.userRole, page, limit);
   paginated(res, result.records, page, limit, result.total, "Measurements fetched successfully");
 };
 

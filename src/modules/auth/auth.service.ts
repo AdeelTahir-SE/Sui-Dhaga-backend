@@ -16,10 +16,15 @@ export const authService = {
       ...(phone ? { phone } : {}),
     };
 
+    const redirectUrl = "https://sui-dhaga-backend.vercel.app/api/v1/auth/callback";
+
     const { data, error } = await client.auth.signUp({
       email,
       password,
-      options: { data: metadata },
+      options: {
+        data: metadata,
+        emailRedirectTo: redirectUrl,
+      },
     });
     if (error) throw new AppError(error.message, 400);
 
@@ -639,7 +644,7 @@ export const authService = {
   <div class="card">
     <div class="spinner" id="spinner"></div>
     <h2>Redirecting to Sui Dhaga...</h2>
-    <p>Please wait while we complete your Google sign in, or tap the button below to return to the app.</p>
+    <p>Please wait while we complete your authentication, or tap the button below to return to the app.</p>
     <div id="manualSection">
       <a id="deepLinkBtn" class="btn" href="#">Open Sui Dhaga App</a>
       <p class="hint">Tap above if the app does not open automatically</p>
@@ -651,9 +656,11 @@ export const authService = {
       var hashParams = new URLSearchParams(hash);
       var queryParams = new URLSearchParams(window.location.search);
 
-      var accessToken = hashParams.get('access_token') || queryParams.get('access_token');
+      var accessToken = hashParams.get('access_token') || queryParams.get('access_token') || hashParams.get('token') || queryParams.get('token');
       var refreshToken = hashParams.get('refresh_token') || queryParams.get('refresh_token');
       var code = queryParams.get('code') || hashParams.get('code');
+      var tokenHash = queryParams.get('token_hash') || hashParams.get('token_hash');
+      var type = queryParams.get('type') || hashParams.get('type');
       var error = queryParams.get('error_description') || queryParams.get('error') || hashParams.get('error_description') || hashParams.get('error');
 
       var targetBase = queryParams.get('appRedirect') || ${JSON.stringify(target)};
@@ -663,6 +670,8 @@ export const authService = {
       if (accessToken) params.push('access_token=' + encodeURIComponent(accessToken));
       if (refreshToken) params.push('refresh_token=' + encodeURIComponent(refreshToken));
       if (code) params.push('code=' + encodeURIComponent(code));
+      if (tokenHash) params.push('token_hash=' + encodeURIComponent(tokenHash));
+      if (type) params.push('type=' + encodeURIComponent(type));
       if (error) params.push('error=' + encodeURIComponent(error));
 
       var finalUrl = targetBase + (params.length > 0 ? sep + params.join('&') : '');

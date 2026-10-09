@@ -171,9 +171,34 @@ app.get("/api-docs", (_req, res) => {
 import { apiLimiter } from "./middlewares/rate-limit.middleware.js";
 import * as authController from "./modules/auth/auth.controller.js";
 
-// Google OAuth callback bridge routes (accessible at root and /api/v1 without rate-limiting)
+// Root Route - handles health check or web browser auth redirects
+app.get("/", (req, res, next) => {
+  if (
+    req.query.access_token ||
+    req.query.code ||
+    req.query.token ||
+    req.query.token_hash ||
+    req.query.error ||
+    req.query.type ||
+    req.headers.accept?.includes("text/html")
+  ) {
+    return authController.googleCallback(req, res, next);
+  }
+  return res.status(200).json({ success: true, message: "Sui Dhaga API is running", version: "1.0.0" });
+});
+
+// OAuth & Email verification callback bridge routes (accessible without rate-limiting)
 app.get(
-  ["/auth/google/callback", "/api/v1/auth/google/callback"],
+  [
+    "/auth/google/callback",
+    "/api/v1/auth/google/callback",
+    "/auth/callback",
+    "/api/v1/auth/callback",
+    "/auth/confirm",
+    "/api/v1/auth/confirm",
+    "/auth/verify",
+    "/api/v1/auth/verify",
+  ],
   authController.googleCallback
 );
 

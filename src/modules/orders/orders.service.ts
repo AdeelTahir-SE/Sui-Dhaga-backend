@@ -301,7 +301,7 @@ export const ordersService = {
     };
   },
 
-  async getOrderById(orderId: string, _userId: string | undefined, _userRole: string | undefined) {
+  async getOrderById(orderId: string, userId: string | undefined, userRole: string | undefined) {
     const client = getDbClient();
     const { data, error } = await client
       .from("orders")
@@ -313,6 +313,19 @@ export const ordersService = {
       throw new AppError(error.message, 400);
     }
     if (!data) return null;
+
+    if (userId && userRole !== "admin") {
+      if (userRole === "customer" && data.customer_id !== userId) {
+        throw new AppError("You do not have permission to access this order", 403);
+      }
+      if (userRole === "tailor") {
+        const { data: tailor } = await client.from("tailors").select("id").eq("user_id", userId).maybeSingle();
+        const tailorId = tailor?.id || userId;
+        if (data.tailor_id !== tailorId) {
+          throw new AppError("You do not have permission to access this order", 403);
+        }
+      }
+    }
 
     const hydrated = await hydrateOrderParties(client, data);
     return formatOrderRecord(hydrated);

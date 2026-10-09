@@ -31,11 +31,21 @@ function formatMeasurement(m: any) {
 
 export const measurementsService = {
   async getMeasurements(userId: string | undefined, userRole: string | undefined, page = 1, limit = 20) {
+    if (!userId && userRole !== "admin") {
+      throw new AppError("Authentication required", 401);
+    }
+
+    const filters: Record<string, unknown> = {};
+    if (userRole !== "admin") {
+      filters.user_id = userId;
+    } else if (userId) {
+      filters.user_id = userId;
+    }
+
     const result = await fetchTableData({
       table: "measurements",
       select: "id, user_id, title, gender, unit, chest, waist, hips, shoulder, sleeve_length, shirt_length, trouser_length, inseam, neck, notes, created_at, updated_at",
-      userId,
-      userRole,
+      filters,
       page,
       limit,
       orderColumn: "created_at",
@@ -46,26 +56,44 @@ export const measurementsService = {
     return { ...result, records };
   },
 
-  async getMeasurementById(measurementId: string, _userId: string | undefined, _userRole: string | undefined) {
+  async getMeasurementById(measurementId: string, userId: string | undefined, userRole: string | undefined) {
+    if (!userId && userRole !== "admin") {
+      throw new AppError("Authentication required", 401);
+    }
     const client = getDbClient();
     const { data, error } = await client
       .from("measurements")
       .select("id, user_id, title, gender, unit, chest, waist, hips, shoulder, sleeve_length, shirt_length, trouser_length, inseam, neck, notes, created_at, updated_at")
       .eq("id", measurementId)
-      .single();
+      .maybeSingle();
 
     if (error && error.code !== "PGRST116") {
       throw new AppError(error.message, 400);
     }
-    if (!data) return null;
+    if (!data) {
+      throw new AppError("Measurement not found", 404);
+    }
+
+    if (userRole !== "admin" && data.user_id !== userId) {
+      throw new AppError("You do not have permission to access this measurement", 403);
+    }
+
     return formatMeasurement(data);
   },
 
-  async createMeasurement(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
+  async createMeasurement(userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>) {
     if (!userId) throw new AppError("Authentication required", 401);
     const client = getDbClient();
     const mapped = toSnakeCase(data);
     
+    // Prevent non-admin users from creating measurements under another user_id
+    const targetUserId = (userRole === "admin" && (data.userId || data.user_id))
+      ? String(data.userId || data.user_id)
+      : userId;
+    delete mapped.user_id;
+    delete mapped.userId;
+    delete mapped.id;
+
     // Ensure title and unit are normalized
     mapped.title = data.title || data.profileName || data.profile_name || "My Measurements";
     if (mapped.unit === "inches") mapped.unit = "in";
@@ -76,7 +104,7 @@ export const measurementsService = {
       .from("measurements")
       .insert({
         ...mapped,
-        user_id: userId,
+        user_id: targetUserId,
       })
       .select()
       .single();
@@ -90,7 +118,7 @@ export const measurementsService = {
         .from("measurements")
         .insert({
           ...fallbackMapped,
-          user_id: userId,
+          user_id: targetUserId,
         })
         .select()
         .single();
@@ -107,8 +135,33 @@ export const measurementsService = {
   },
 
   async updateMeasurement(measurementId: string, userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>) {
+    if (!userId && userRole !== "admin") {
+      throw new AppError("Authentication required", 401);
+    }
     const client = getDbClient();
+
+    // Verify measurement exists and caller has permission to edit it
+    const { data: existing, error: existingError } = await client
+      .from("measurements")
+      .select("id, user_id")
+      .eq("id", measurementId)
+      .maybeSingle();
+
+    if (existingError && existingError.code !== "PGRST116") {
+      throw new AppError(existingError.message, 400);
+    }
+    if (!existing) {
+      throw new AppError("Measurement not found", 404);
+    }
+    if (userRole !== "admin" && existing.user_id !== userId) {
+      throw new AppError("You do not have permission to edit this measurement", 403);
+    }
+
     const mapped = toSnakeCase(data);
+    delete mapped.user_id;
+    delete mapped.userId;
+    delete mapped.id;
+
     if (data.profileName || data.profile_name) {
       mapped.title = data.title || data.profileName || data.profile_name;
       delete mapped.profile_name;
@@ -116,8 +169,7 @@ export const measurementsService = {
     if (mapped.unit === "inches") mapped.unit = "in";
 
     let query = client.from("measurements").update(mapped).eq("id", measurementId);
-
-    if (userId && userRole !== "admin") {
+    if (userRole !== "admin") {
       query = query.eq("user_id", userId);
     }
 
@@ -128,7 +180,7 @@ export const measurementsService = {
       delete fallbackMapped.shirt_length;
       delete fallbackMapped.trouser_length;
       let fallbackQuery = client.from("measurements").update(fallbackMapped).eq("id", measurementId);
-      if (userId && userRole !== "admin") {
+      if (userRole !== "admin") {
         fallbackQuery = fallbackQuery.eq("user_id", userId);
       }
       const retry = await fallbackQuery.select().single();
@@ -145,12 +197,37 @@ export const measurementsService = {
   },
 
   async deleteMeasurement(measurementId: string, userId: string | undefined, userRole: string | undefined) {
-    return deleteTableData({
-      table: "measurements",
-      id: measurementId,
-      userId,
-      userRole,
-    });
+    if (!userId && userRole !== "admin") {
+      throw new AppError("Authentication required", 401);
+    }
+    const client = getDbClient();
+
+    // Verify measurement exists and caller has permission to delete it
+    const { data: existing, error: existingError } = await client
+      .from("measurements")
+      .select("id, user_id")
+      .eq("id", measurementId)
+      .maybeSingle();
+
+    if (existingError && existingError.code !== "PGRST116") {
+      throw new AppError(existingError.message, 400);
+    }
+    if (!existing) {
+      throw new AppError("Measurement not found", 404);
+    }
+    if (userRole !== "admin" && existing.user_id !== userId) {
+      throw new AppError("You do not have permission to delete this measurement", 403);
+    }
+
+    const { error: deleteError } = await client
+      .from("measurements")
+      .delete()
+      .eq("id", measurementId);
+
+    if (deleteError) {
+      throw new AppError(deleteError.message, 400);
+    }
+    return true;
   },
 };
 
