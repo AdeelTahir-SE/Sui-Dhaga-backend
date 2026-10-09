@@ -5,13 +5,26 @@ export const createTailorSchema = z.object({
   specialties: z.array(z.string()).default([]),
   city: z.string().min(1),
   address: z.string().optional(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
-  experienceYears: z.number().int().optional(),
+  latitude: z.coerce.number().nullable().optional(),
+  longitude: z.coerce.number().nullable().optional(),
+  location: z
+    .union([
+      z.object({
+        city: z.string().optional().nullable(),
+        address: z.string().optional().nullable(),
+        latitude: z.coerce.number().optional().nullable(),
+        longitude: z.coerce.number().optional().nullable(),
+      }),
+      z.string(),
+    ])
+    .optional()
+    .nullable(),
+  experienceYears: z.coerce.number().int().optional(),
   bio: z.string().optional(),
   bannerUrl: z.string().url().optional(),
   organizationName: z.string().optional().nullable(),
   organization: z.string().optional().nullable(),
+  organization_name: z.string().optional().nullable(),
 });
 
 export const updateTailorSchema = createTailorSchema.partial().extend({
@@ -65,14 +78,16 @@ export const tailorAvailabilitySlotSchema = z.object({
   break_end: z.string().optional(),
 });
 
+export const tailorAvailabilityContainerSchema = z.union([
+  z.object({ slots: z.array(tailorAvailabilitySlotSchema) }),
+  z.object({ timings: z.array(tailorAvailabilitySlotSchema) }),
+  z.object({ dayTimings: z.array(tailorAvailabilitySlotSchema) }),
+]);
+
 export const tailorAvailabilitySchema = z.union([
-  tailorAvailabilitySlotSchema,
+  tailorAvailabilityContainerSchema,
   z.array(tailorAvailabilitySlotSchema),
-  z.object({
-    slots: z.array(tailorAvailabilitySlotSchema).optional(),
-    timings: z.array(tailorAvailabilitySlotSchema).optional(),
-    dayTimings: z.array(tailorAvailabilitySlotSchema).optional(),
-  }),
+  tailorAvailabilitySlotSchema,
 ]);
 
 export const tailorsCompareSchema = z.object({

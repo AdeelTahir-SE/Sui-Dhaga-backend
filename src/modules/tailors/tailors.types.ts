@@ -8,8 +8,9 @@ export interface CreateTailorPayload {
   experienceYears?: number;
   bio?: string;
   bannerUrl?: string;
-  organizationName?: string;
-  organization?: string;
+  organizationName?: string | null;
+  organization?: string | null;
+  organization_name?: string | null;
 }
 
 export interface UpdateTailorPayload {
@@ -22,8 +23,9 @@ export interface UpdateTailorPayload {
   experienceYears?: number;
   bio?: string;
   bannerUrl?: string;
-  organizationName?: string;
-  organization?: string;
+  organizationName?: string | null;
+  organization?: string | null;
+  organization_name?: string | null;
   removeImageId?: string;
   verified?: boolean;
 }

@@ -50,6 +50,14 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
       }
     } catch {}
   }
+  if (detectedRole !== "tailor" && detectedRole !== "admin") {
+    try {
+      const { data: tailorRec } = await supabase.from("tailors").select("id").eq("user_id", user.id).maybeSingle();
+      if (tailorRec?.id) {
+        detectedRole = "tailor";
+      }
+    } catch {}
+  }
   req.userRole = detectedRole ?? "customer";
   next();
 };

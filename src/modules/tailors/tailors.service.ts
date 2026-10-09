@@ -190,7 +190,8 @@ export const tailorsService = {
   },
 
   async getTailorById(tailorId: string) {
-    const cacheKey = `tailor:${tailorId}`;
+    const effectiveTailorId = (await this.resolveTailorId(tailorId)) || tailorId;
+    const cacheKey = `tailor:${effectiveTailorId}`;
     const cached = cacheService.get<any>(cacheKey);
     if (cached) return cached;
 
@@ -198,26 +199,108 @@ export const tailorsService = {
     const { data, error } = await client
       .from("tailors")
       .select("id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, organization_name, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address), services:tailor_services(id, title, price, description, category, is_active), availability:tailor_availability(*), gallery:tailor_gallery(id, image_url, caption, display_order), reviews(id, rating, comment, images, created_at, customer:profiles!customer_id(id, full_name, avatar_url))")
-      .eq("id", tailorId)
+      .eq("id", effectiveTailorId)
       .single();
 
     if (error && error.code !== "PGRST116") {
       throw new AppError(error.message, 400);
     }
     if (data) {
-      cacheService.set(cacheKey, data, 60);
+      const enriched = {
+        ...data,
+        location: typeof data.location === "object" && data.location !== null ? data.location : {
+          city: data.city,
+          address: data.address,
+          latitude: data.latitude,
+          longitude: data.longitude,
+        },
+      };
+      cacheService.set(cacheKey, enriched, 60);
+      return enriched;
     }
     return data;
   },
 
-  async createTailor(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
+  async getTailorByUserId(userId: string | undefined): Promise<any> {
     if (!userId) throw new AppError("Authentication required", 401);
     const client = getDbClient();
+    const { data, error } = await client
+      .from("tailors")
+      .select("id, user_id, shop_name, specialties, city, address, experience_years, bio, rating, review_count, banner_url, verification_status, verified, latitude, longitude, organization_name, created_at, profile:profiles(id, full_name, avatar_url, phone, bio, address), services:tailor_services(id, title, price, description, category, is_active), availability:tailor_availability(*), gallery:tailor_gallery(id, image_url, caption, display_order), reviews(id, rating, comment, images, created_at, customer:profiles!customer_id(id, full_name, avatar_url))")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error && error.code !== "PGRST116") {
+      throw new AppError(error.message, 400);
+    }
+    if (data) {
+      return {
+        ...data,
+        location: typeof data.location === "object" && data.location !== null ? data.location : {
+          city: data.city,
+          address: data.address,
+          latitude: data.latitude,
+          longitude: data.longitude,
+        },
+      };
+    }
+    return data;
+  },
+
+  async createTailor(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>): Promise<any> {
+    if (!userId) throw new AppError("Authentication required", 401);
+    const client = getDbClient();
+
+    // If tailor row already exists for this user, route to updateTailor to prevent unique constraint crash
+    const { data: existing } = await client
+      .from("tailors")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (existing?.id) {
+      return this.updateTailor(existing.id, userId, _userRole, data);
+    }
+
     const cleanData = { ...data };
-    if (cleanData.organization && !cleanData.organizationName) {
-      cleanData.organizationName = cleanData.organization;
+    const orgValue =
+      cleanData.organizationName !== undefined
+        ? cleanData.organizationName
+        : cleanData.organization !== undefined
+        ? cleanData.organization
+        : cleanData.organization_name;
+
+    if (orgValue !== undefined) {
+      cleanData.organizationName =
+        typeof orgValue === "string" ? orgValue.trim() || null : orgValue;
     }
     delete cleanData.organization;
+    delete cleanData.organization_name;
+
+    if (typeof cleanData.location === "object" && cleanData.location !== null) {
+      const loc = cleanData.location as Record<string, unknown>;
+      if (cleanData.latitude === undefined && loc.latitude !== undefined && loc.latitude !== null) {
+        cleanData.latitude = Number(loc.latitude);
+      }
+      if (cleanData.longitude === undefined && loc.longitude !== undefined && loc.longitude !== null) {
+        cleanData.longitude = Number(loc.longitude);
+      }
+      if (!cleanData.city && typeof loc.city === "string") {
+        cleanData.city = loc.city;
+      }
+      if (!cleanData.address && typeof loc.address === "string") {
+        cleanData.address = loc.address;
+      }
+    }
+    delete cleanData.location;
+
+    if (cleanData.latitude !== undefined && cleanData.latitude !== null) {
+      cleanData.latitude = Number(cleanData.latitude);
+    }
+    if (cleanData.longitude !== undefined && cleanData.longitude !== null) {
+      cleanData.longitude = Number(cleanData.longitude);
+    }
+
     const mapped = toSnakeCase(cleanData);
     const { data: created, error } = await client
       .from("tailors")
@@ -227,27 +310,88 @@ export const tailorsService = {
 
     if (error) throw new AppError(error.message, 400);
     this.invalidateTailorCache();
-    return created;
+    return {
+      ...created,
+      location: {
+        city: created.city,
+        address: created.address,
+        latitude: created.latitude,
+        longitude: created.longitude,
+      },
+    };
   },
 
-  async updateTailor(tailorId: string, userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>) {
+  async updateTailor(tailorId: string, userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>): Promise<any> {
     const client = getDbClient();
+    const effectiveTailorId = (await this.resolveTailorId(tailorId, userId)) || tailorId;
+
     const cleanData = { ...data };
-    if (cleanData.organization && !cleanData.organizationName) {
-      cleanData.organizationName = cleanData.organization;
+    const orgValue =
+      cleanData.organizationName !== undefined
+        ? cleanData.organizationName
+        : cleanData.organization !== undefined
+        ? cleanData.organization
+        : cleanData.organization_name;
+
+    if (orgValue !== undefined) {
+      cleanData.organizationName =
+        typeof orgValue === "string" ? orgValue.trim() || null : orgValue;
     }
     delete cleanData.organization;
+    delete cleanData.organization_name;
+
+    if (typeof cleanData.location === "object" && cleanData.location !== null) {
+      const loc = cleanData.location as Record<string, unknown>;
+      if (cleanData.latitude === undefined && loc.latitude !== undefined && loc.latitude !== null) {
+        cleanData.latitude = Number(loc.latitude);
+      }
+      if (cleanData.longitude === undefined && loc.longitude !== undefined && loc.longitude !== null) {
+        cleanData.longitude = Number(loc.longitude);
+      }
+      if (!cleanData.city && typeof loc.city === "string") {
+        cleanData.city = loc.city;
+      }
+      if (!cleanData.address && typeof loc.address === "string") {
+        cleanData.address = loc.address;
+      }
+    }
+    delete cleanData.location;
+
+    if (cleanData.latitude !== undefined && cleanData.latitude !== null) {
+      cleanData.latitude = Number(cleanData.latitude);
+    }
+    if (cleanData.longitude !== undefined && cleanData.longitude !== null) {
+      cleanData.longitude = Number(cleanData.longitude);
+    }
+
     const mapped = toSnakeCase(cleanData);
-    let query = client.from("tailors").update(mapped).eq("id", tailorId);
+    let query = client.from("tailors").update(mapped).eq("id", effectiveTailorId);
 
     if (userId && userRole !== "admin") {
       query = query.eq("user_id", userId);
     }
 
     const { data: updated, error } = await query.select().single();
-    if (error) throw new AppError(error.message, 400);
-    this.invalidateTailorCache(tailorId);
-    return updated;
+    if (error) {
+      // If no tailor record was found to update and we have a valid userId, fallback to createTailor
+      if (error.code === "PGRST116" && userId) {
+        return this.createTailor(userId, userRole, data);
+      }
+      throw new AppError(error.message, 400);
+    }
+    this.invalidateTailorCache(effectiveTailorId);
+    if (tailorId !== effectiveTailorId) {
+      this.invalidateTailorCache(tailorId);
+    }
+    return {
+      ...updated,
+      location: {
+        city: updated.city,
+        address: updated.address,
+        latitude: updated.latitude,
+        longitude: updated.longitude,
+      },
+    };
   },
 
   async deleteTailor(tailorId: string, userId: string | undefined, userRole: string | undefined) {
@@ -310,21 +454,54 @@ export const tailorsService = {
     return true;
   },
 
-  async getTailorAvailability(tailorId: string) {
+  async resolveTailorId(tailorId: string, userId?: string): Promise<string | null> {
+    const client = getDbClient();
+    const cleanId = tailorId ? tailorId.replace(/^tailor_/, "").trim() : "";
+    const isValidUuid = (id?: string | null): boolean =>
+      Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+
+    // 1. If cleanId is a valid UUID, search by id or user_id
+    if (isValidUuid(cleanId)) {
+      try {
+        const { data: byId } = await client
+          .from("tailors")
+          .select("id")
+          .eq("id", cleanId)
+          .maybeSingle();
+        if (byId?.id) return byId.id;
+
+        const { data: byUser } = await client
+          .from("tailors")
+          .select("id")
+          .eq("user_id", cleanId)
+          .maybeSingle();
+        if (byUser?.id) return byUser.id;
+      } catch {}
+    }
+
+    // 2. If userId is provided and valid UUID, search by user_id
+    if (userId && isValidUuid(userId)) {
+      try {
+        const { data: byAuthUser } = await client
+          .from("tailors")
+          .select("id")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (byAuthUser?.id) return byAuthUser.id;
+      } catch {}
+    }
+
+    return null;
+  },
+
+  async getTailorAvailability(tailorId: string, userId?: string) {
     const client = getDbClient();
 
-    // Resolve real tailor_id if a user_id was passed
-    let effectiveTailorId = tailorId;
-    try {
-      const { data: tailorRow } = await client
-        .from("tailors")
-        .select("id")
-        .or(`id.eq.${tailorId},user_id.eq.${tailorId}`)
-        .maybeSingle();
-      if (tailorRow?.id) {
-        effectiveTailorId = tailorRow.id;
-      }
-    } catch {}
+    // Resolve real tailor_id if a user_id or prefixed tailor id was passed
+    const effectiveTailorId = await this.resolveTailorId(tailorId, userId);
+    if (!effectiveTailorId) {
+      return [];
+    }
 
     const { data, error } = await client
       .from("tailor_availability")
@@ -361,17 +538,38 @@ export const tailorsService = {
     const client = getDbClient();
 
     // Resolve effective tailor ID
-    let effectiveTailorId = tailorId;
-    try {
-      const { data: tailorRow } = await client
-        .from("tailors")
-        .select("id")
-        .or(`id.eq.${tailorId},user_id.eq.${tailorId}`)
-        .maybeSingle();
-      if (tailorRow?.id) {
-        effectiveTailorId = tailorRow.id;
-      }
-    } catch {}
+    let effectiveTailorId = await this.resolveTailorId(tailorId, _userId);
+
+    // If tailor row doesn't exist yet, auto-create tailor row for authenticated user
+    const isValidUuid = (id?: string | null): boolean =>
+      Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+
+    if (!effectiveTailorId && _userId && isValidUuid(_userId)) {
+      try {
+        const { data: newTailor } = await client
+          .from("tailors")
+          .insert({
+            user_id: _userId,
+            shop_name: "Tailor Shop",
+            city: "Lahore",
+            specialties: ["custom-stitching"],
+            experience_years: 1,
+            rating: 5.0,
+            review_count: 0,
+            verification_status: "pending",
+            verified: false,
+          })
+          .select("id")
+          .single();
+        if (newTailor?.id) {
+          effectiveTailorId = newTailor.id;
+        }
+      } catch {}
+    }
+
+    if (!effectiveTailorId) {
+      throw new AppError("Tailor profile not found. Please set up your tailor profile first.", 404);
+    }
 
     const rawSlots: any[] = Array.isArray(data)
       ? data
@@ -436,8 +634,14 @@ export const tailorsService = {
       .insert(rowsToInsert)
       .select();
 
-    // Fallback if break columns do not exist yet in database
-    if (error && error.message && error.message.includes("does not exist")) {
+    // Fallback if break columns do not exist yet in database or schema cache
+    if (
+      error &&
+      error.message &&
+      (error.message.includes("does not exist") ||
+        error.message.includes("Could not find") ||
+        error.message.includes("column"))
+    ) {
       const basicRows = rowsToInsert.map(({ has_break, break_start, break_end, ...rest }: any) => rest);
       const retry = await client
         .from("tailor_availability")
@@ -450,6 +654,9 @@ export const tailorsService = {
     if (error) throw new AppError(error.message, 400);
 
     this.invalidateTailorCache(effectiveTailorId);
+    if (tailorId && tailorId !== effectiveTailorId) {
+      this.invalidateTailorCache(tailorId);
+    }
     return inserted ?? [];
   },
 

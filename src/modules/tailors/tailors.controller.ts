@@ -278,6 +278,14 @@ export const getTailorsMap: RequestHandler = async (req, res) => {
   success(res, records, "Tailors map data fetched successfully");
 };
 
+export const getMyTailorProfile: RequestHandler = async (req, res) => {
+  const tailor = await tailorsService.getTailorByUserId(req.user?.id);
+  if (!tailor) {
+    return res.status(404).json({ success: false, message: "Tailor profile not found", data: null });
+  }
+  success(res, tailor, "Tailor profile fetched successfully");
+};
+
 export const getTailorById: RequestHandler = async (req, res) => {
   const tailor = await tailorsService.getTailorById(asString(req.params.tailorId));
   success(res, tailor, "Tailor fetched successfully");
@@ -289,7 +297,7 @@ export const getTailorServices: RequestHandler = async (req, res) => {
 };
 
 export const getTailorAvailability: RequestHandler = async (req, res) => {
-  const availability = await tailorsService.getTailorAvailability(asString(req.params.tailorId));
+  const availability = await tailorsService.getTailorAvailability(asString(req.params.tailorId), req.user?.id);
   success(res, availability, "Tailor availability fetched successfully");
 };
 

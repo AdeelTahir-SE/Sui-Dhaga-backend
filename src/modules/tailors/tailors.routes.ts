@@ -132,6 +132,7 @@ tailorsRoutes.get("/tailors/map", asyncHandler(tailorsController.getTailorsMap))
  *       200:
  *         description: Tailor profile updated
  */
+tailorsRoutes.get("/tailors/me", requireAuth, asyncHandler(tailorsController.getMyTailorProfile));
 tailorsRoutes.get("/tailors/:tailorId", asyncHandler(tailorsController.getTailorById));
 tailorsRoutes.patch("/tailors/:tailorId", requireAuth, requireRole("tailor", "admin"), validate(updateTailorSchema), asyncHandler(tailorsController.updateTailor));
 
@@ -207,6 +208,7 @@ tailorsRoutes.post("/tailors/:tailorId/services", requireAuth, requireRole("tail
  */
 tailorsRoutes.get("/tailors/:tailorId/availability", asyncHandler(tailorsController.getTailorAvailability));
 tailorsRoutes.put("/tailors/:tailorId/availability", requireAuth, requireRole("tailor", "admin"), validate(tailorAvailabilitySchema), asyncHandler(tailorsController.setTailorAvailability));
+tailorsRoutes.post("/tailors/:tailorId/availability", requireAuth, requireRole("tailor", "admin"), validate(tailorAvailabilitySchema), asyncHandler(tailorsController.setTailorAvailability));
 
 /**
  * @swagger
