@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth } from "../../middlewares/auth.middleware.js";
+import { requireAuth, optionalAuth } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validation.middleware.js";
 import { uploadCommunityMedia } from "../../middlewares/upload.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
@@ -77,7 +77,7 @@ export const communityRoutes = Router();
  *       201:
  *         description: Post created successfully
  */
-communityRoutes.get("/community/posts", asyncHandler(communityController.getPosts));
+communityRoutes.get("/community/posts", optionalAuth, asyncHandler(communityController.getPosts));
 communityRoutes.post("/community/posts", requireAuth, uploadCommunityMedia("images", 10), validate(createCommunityPostSchema), asyncHandler(communityController.createPost));
 
 /**
@@ -145,7 +145,7 @@ communityRoutes.post("/community/posts", requireAuth, uploadCommunityMedia("imag
  *       200:
  *         description: Post deleted successfully
  */
-communityRoutes.get("/community/posts/:postId", asyncHandler(communityController.getPostById));
+communityRoutes.get("/community/posts/:postId", optionalAuth, asyncHandler(communityController.getPostById));
 communityRoutes.patch("/community/posts/:postId", requireAuth, validate(updateCommunityPostSchema), asyncHandler(communityController.updatePost));
 communityRoutes.delete("/community/posts/:postId", requireAuth, asyncHandler(communityController.deletePost));
 

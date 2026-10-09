@@ -80,14 +80,34 @@ export const communityService = {
         const likedSet = new Set((likesRes.data ?? []).map((l) => l.post_id));
         const savedSet = new Set((savesRes.data ?? []).map((s) => s.post_id));
 
+        posts = posts.map((p) => {
+          const isLiked = likedSet.has(p.id);
+          const isSaved = savedSet.has(p.id);
+          return {
+            ...p,
+            is_liked: isLiked,
+            isLiked: isLiked,
+            is_saved: isSaved,
+            isSaved: isSaved,
+          };
+        });
+      } catch {
         posts = posts.map((p) => ({
           ...p,
-          is_liked: likedSet.has(p.id),
-          is_saved: savedSet.has(p.id),
+          is_liked: false,
+          isLiked: false,
+          is_saved: false,
+          isSaved: false,
         }));
-      } catch {
-        // Continue gracefully if like queries fail
       }
+    } else {
+      posts = posts.map((p) => ({
+        ...p,
+        is_liked: false,
+        isLiked: false,
+        is_saved: false,
+        isSaved: false,
+      }));
     }
 
     return {
@@ -115,14 +135,26 @@ export const communityService = {
     if (userId) {
       try {
         const [likeRes, saveRes] = await Promise.all([
-          client.from("community_likes").select("post_id").eq("post_id", postId).eq("user_id", userId).single(),
-          client.from("community_saves").select("post_id").eq("post_id", postId).eq("user_id", userId).single(),
+          client.from("community_likes").select("post_id").eq("post_id", postId).eq("user_id", userId).maybeSingle(),
+          client.from("community_saves").select("post_id").eq("post_id", postId).eq("user_id", userId).maybeSingle(),
         ]);
-        post.is_liked = Boolean(likeRes.data);
-        post.is_saved = Boolean(saveRes.data);
+        const isLiked = Boolean(likeRes?.data);
+        const isSaved = Boolean(saveRes?.data);
+        post.is_liked = isLiked;
+        post.isLiked = isLiked;
+        post.is_saved = isSaved;
+        post.isSaved = isSaved;
       } catch {
-        // Continue gracefully
+        post.is_liked = false;
+        post.isLiked = false;
+        post.is_saved = false;
+        post.isSaved = false;
       }
+    } else {
+      post.is_liked = false;
+      post.isLiked = false;
+      post.is_saved = false;
+      post.isSaved = false;
     }
     return post;
   },
@@ -282,7 +314,9 @@ export const communityService = {
         ? {
             ...updated,
             likesCount: safeLikesCount,
+            likes_count: safeLikesCount,
             isLiked: liked,
+            is_liked: liked,
           }
         : null,
     };
@@ -329,7 +363,9 @@ export const communityService = {
         ? {
             ...updated,
             savesCount: safeSavesCount,
+            saves_count: safeSavesCount,
             isSaved: saved,
+            is_saved: saved,
           }
         : null,
     };
