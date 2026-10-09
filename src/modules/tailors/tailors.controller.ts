@@ -236,6 +236,12 @@ export const getTailorsMap: RequestHandler = async (req, res) => {
       ...t,
       latitude: lat,
       longitude: lng,
+      location: {
+        city: t.city,
+        address: t.address,
+        latitude: lat,
+        longitude: lng,
+      },
       distance_km: distKm ?? (typeof t.distance_km === "number" ? t.distance_km : null),
       distance: distStr ?? (typeof t.distance === "string" ? t.distance : null),
     };
@@ -282,6 +288,14 @@ export const getMyTailorProfile: RequestHandler = async (req, res) => {
   const tailor = await tailorsService.getTailorByUserId(req.user?.id);
   if (!tailor) {
     return res.status(404).json({ success: false, message: "Tailor profile not found", data: null });
+  }
+  success(res, tailor, "Tailor profile fetched successfully");
+};
+
+export const getMyTailorProfile: RequestHandler = async (req, res) => {
+  const tailor = await tailorsService.getTailorByUserId(req.user?.id);
+  if (!tailor) {
+    return res.status(404).json({ success: false, message: "Tailor profile not found" });
   }
   success(res, tailor, "Tailor profile fetched successfully");
 };

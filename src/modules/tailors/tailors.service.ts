@@ -36,8 +36,19 @@ export const tailorsService = {
       filters: Object.keys(filters).length > 0 ? filters : undefined,
     });
 
-    cacheService.set(cacheKey, result, 60);
-    return result;
+    const records = ((result.records || []) as any[]).map((t) => ({
+      ...t,
+      location: typeof t.location === "object" && t.location !== null ? t.location : {
+        city: t.city,
+        address: t.address,
+        latitude: t.latitude,
+        longitude: t.longitude,
+      },
+    }));
+    const enrichedResult = { ...result, records };
+
+    cacheService.set(cacheKey, enrichedResult, 60);
+    return enrichedResult;
   },
 
   async getNearbyTailors(params: {
