@@ -63,10 +63,10 @@ export const usersService = {
   async updateMyProfile(userId: string, _userRole: string | undefined, data: Record<string, unknown>) {
     const client = getDbClient();
     const mapped = toSnakeCase(data);
-    if (mapped.name) {
+    if (mapped.name && !mapped.full_name) {
       mapped.full_name = mapped.name;
-      delete mapped.name;
     }
+    delete mapped.name;
     const { data: updated, error } = await client
       .from("profiles")
       .update(mapped)
