@@ -149,36 +149,34 @@ class QualityGateAndDetector:
                 valid_scores = scores[person_mask]
                 valid_kpts = keypoints[person_mask] if len(keypoints) > 0 else []
 
-                if len(valid_boxes) == 0:
-                    return None, False, False
+                if len(valid_boxes) > 0:
+                    if len(valid_boxes) > 1:
+                        # Check if second person is also prominent (> 35% area of main person)
+                        areas = (valid_boxes[:, 2] - valid_boxes[:, 0]) * (valid_boxes[:, 3] - valid_boxes[:, 1])
+                        sorted_idxs = np.argsort(areas)[::-1]
+                        if areas[sorted_idxs[1]] > 0.35 * areas[sorted_idxs[0]]:
+                            return None, False, True
 
-                if len(valid_boxes) > 1:
-                    # Check if second person is also prominent (> 50% area of main person)
-                    areas = (valid_boxes[:, 2] - valid_boxes[:, 0]) * (valid_boxes[:, 3] - valid_boxes[:, 1])
-                    sorted_idxs = np.argsort(areas)[::-1]
-                    if areas[sorted_idxs[1]] > 0.35 * areas[sorted_idxs[0]]:
-                        return None, False, True
+                    main_idx = np.argmax(valid_scores)
+                    best_box = tuple(valid_boxes[main_idx])
 
-                main_idx = np.argmax(valid_scores)
-                best_box = tuple(valid_boxes[main_idx])
+                    # Check keypoints for head and feet coverage
+                    kpts_ok = True
+                    if len(valid_kpts) > main_idx:
+                        kpt = valid_kpts[main_idx]  # (17, 3): x, y, conf
+                        # Indices 0=nose, 15=left_ankle, 16=right_ankle
+                        nose_conf = kpt[0, 2]
+                        l_ankle_conf = kpt[15, 2]
+                        r_ankle_conf = kpt[16, 2]
+                        feet_conf = max(l_ankle_conf, r_ankle_conf)
+                        # Check if head and feet are visible and within frame
+                        if nose_conf < settings.KEYPOINT_CONFIDENCE_THRESHOLD or feet_conf < settings.KEYPOINT_CONFIDENCE_THRESHOLD:
+                            kpts_ok = False
+                        elif (best_box[1] <= 2 and nose_conf < 0.5) or (best_box[3] >= (h - 2) and feet_conf < 0.5):
+                            # Head or feet clipped directly at boundary with marginal confidence
+                            kpts_ok = False
 
-                # Check keypoints for head and feet coverage
-                kpts_ok = True
-                if len(valid_kpts) > main_idx:
-                    kpt = valid_kpts[main_idx]  # (17, 3): x, y, conf
-                    # Indices 0=nose, 15=left_ankle, 16=right_ankle
-                    nose_conf = kpt[0, 2]
-                    l_ankle_conf = kpt[15, 2]
-                    r_ankle_conf = kpt[16, 2]
-                    feet_conf = max(l_ankle_conf, r_ankle_conf)
-                    # Check if head and feet are visible and within frame
-                    if nose_conf < settings.KEYPOINT_CONFIDENCE_THRESHOLD or feet_conf < settings.KEYPOINT_CONFIDENCE_THRESHOLD:
-                        kpts_ok = False
-                    elif (best_box[1] <= 2 and nose_conf < 0.5) or (best_box[3] >= (h - 2) and feet_conf < 0.5):
-                        # Head or feet clipped directly at boundary with marginal confidence
-                        kpts_ok = False
-
-                return best_box, kpts_ok, False
+                    return best_box, kpts_ok, False
             except Exception:
                 pass
 

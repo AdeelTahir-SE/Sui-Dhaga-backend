@@ -21,6 +21,11 @@ venv/
 
 # Model weights & checkpoint data (manual download only)
 measurement-service/data/
+measurement-service/models_shapy/
+measurement-service/models_smplx/
+measurement-service/vendor/
+*.zip
+*.tar.gz
 *.npz
 *.pkl
 *.ckpt

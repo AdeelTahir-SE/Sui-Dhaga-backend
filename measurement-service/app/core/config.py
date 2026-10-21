@@ -25,12 +25,12 @@ class Settings(BaseSettings):
     DEVICE: str = Field(default_factory=lambda: os.getenv("DEVICE", "cpu"))
     
     # Asset paths
-    DATA_DIR: Path = Field(default_factory=lambda: Path(os.getenv("DATA_DIR", BASE_DIR / "data")))
+    DATA_DIR: Path = Field(default_factory=lambda: Path(os.getenv("DATA_DIR", BASE_DIR / "models_shapy")))
     SMPLX_MODEL_PATH: Path = Field(
-        default_factory=lambda: Path(os.getenv("SMPLX_MODEL_PATH", BASE_DIR / "data" / "body_models" / "smplx"))
+        default_factory=lambda: Path(os.getenv("SMPLX_MODEL_PATH", BASE_DIR / "models_smplx"))
     )
     SHAPY_CHECKPOINT_PATH: Path = Field(
-        default_factory=lambda: Path(os.getenv("SHAPY_CHECKPOINT_PATH", BASE_DIR / "data" / "trained_models" / "shapy" / "SHAPY_A"))
+        default_factory=lambda: Path(os.getenv("SHAPY_CHECKPOINT_PATH", BASE_DIR / "models_shapy" / "trained_models" / "shapy" / "SHAPY_A" / "checkpoints"))
     )
     LANDMARKS_PATH: Path = Field(
         default_factory=lambda: Path(os.getenv("LANDMARKS_PATH", BASE_DIR / "app" / "pipeline" / "landmarks.json"))
