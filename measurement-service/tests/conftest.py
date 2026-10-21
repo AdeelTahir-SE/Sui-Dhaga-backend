@@ -34,8 +34,8 @@ def sample_pil_image() -> Image.Image:
 
 @pytest.fixture
 def small_pil_image() -> Image.Image:
-    """Creates an undersized test image (200x200) to test IMAGE_TOO_SMALL gate."""
-    return Image.new("RGB", (200, 200), color=(200, 200, 200))
+    """Creates an undersized test image (100x100) to test IMAGE_TOO_SMALL gate."""
+    return Image.new("RGB", (100, 100), color=(200, 200, 200))
 
 
 @pytest.fixture

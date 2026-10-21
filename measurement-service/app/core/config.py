@@ -37,8 +37,10 @@ class Settings(BaseSettings):
     )
     
     # Quality gate thresholds
-    MIN_IMAGE_WIDTH: int = 512
-    MIN_IMAGE_HEIGHT: int = 512
+    MIN_IMAGE_WIDTH: int = 180
+    MIN_IMAGE_HEIGHT: int = 240
+    RECOMMENDED_IMAGE_WIDTH: int = 512
+    RECOMMENDED_IMAGE_HEIGHT: int = 512
     KEYPOINT_CONFIDENCE_THRESHOLD: float = 0.4
     
     # Calibration plausible scale factor bounds [user_height / raw_mesh_height]

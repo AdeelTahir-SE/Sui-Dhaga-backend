@@ -57,21 +57,38 @@ class QualityGateAndDetector:
             (cropped_normalized_tensor, (bbox_x1, bbox_y1, bbox_x2, bbox_y2), warnings)
         """
         width, height = pil_image.size
+        warnings: List[str] = []
 
-        # 1. Resolution Check
+        # 1. Hard minimum resolution check
         if width < settings.MIN_IMAGE_WIDTH or height < settings.MIN_IMAGE_HEIGHT:
             raise MeasurementServiceException(
                 code=ErrorCode.IMAGE_TOO_SMALL,
                 detail=(
                     f"Image resolution ({width}x{height}) is below the required minimum "
-                    f"({settings.MIN_IMAGE_WIDTH}x{settings.MIN_IMAGE_HEIGHT})."
+                    f"({settings.MIN_IMAGE_WIDTH}x{settings.MIN_IMAGE_HEIGHT}). "
+                    "Please provide a higher-resolution full-body photo."
                 ),
             )
 
-        np_img = np.array(pil_image)
-        warnings: List[str] = []
+        # 2. Auto-upscale if below recommended resolution to improve keypoint and feature extraction
+        if width < settings.RECOMMENDED_IMAGE_WIDTH or height < settings.RECOMMENDED_IMAGE_HEIGHT:
+            scale = max(
+                settings.RECOMMENDED_IMAGE_WIDTH / float(width),
+                settings.RECOMMENDED_IMAGE_HEIGHT / float(height),
+            )
+            if scale > 1.0:
+                new_w = int(round(width * scale))
+                new_h = int(round(height * scale))
+                pil_image = pil_image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                warnings.append(
+                    f"Image resolution ({width}x{height}) is below recommended "
+                    f"{settings.RECOMMENDED_IMAGE_WIDTH}x{settings.RECOMMENDED_IMAGE_HEIGHT}. "
+                    f"Auto-upscaled to ({new_w}x{new_h}) for feature extraction."
+                )
 
-        # 2. Person & Keypoint Detection
+        np_img = np.array(pil_image)
+
+        # 3. Person & Keypoint Detection
         bbox, keypoints_ok, has_multiple = self._detect_person(np_img)
 
         if has_multiple:
@@ -92,7 +109,7 @@ class QualityGateAndDetector:
                 detail="Full body not completely visible. Head, arms, and feet must be clearly in frame.",
             )
 
-        # 3. Check for loose clothing heuristic
+        # 4. Check for loose clothing heuristic
         # Ratio of bbox width to height for human standing pose
         x1, y1, x2, y2 = bbox
         bw = x2 - x1
@@ -103,7 +120,7 @@ class QualityGateAndDetector:
                 "Silhouette width is wide relative to height. Loose clothing or baggy fabric may cause overestimation."
             )
 
-        # 4. Extract padded square crop
+        # 5. Extract padded square crop
         cropped_tensor = self._extract_crop(np_img, bbox, crop_size=224)
 
         return cropped_tensor, bbox, warnings
@@ -157,8 +174,8 @@ class QualityGateAndDetector:
                     # Check if head and feet are visible and within frame
                     if nose_conf < settings.KEYPOINT_CONFIDENCE_THRESHOLD or feet_conf < settings.KEYPOINT_CONFIDENCE_THRESHOLD:
                         kpts_ok = False
-                    if best_box[1] < 10 or best_box[3] > (h - 10):
-                        # Head or feet potentially cut off at top/bottom image boundary
+                    elif (best_box[1] <= 2 and nose_conf < 0.5) or (best_box[3] >= (h - 2) and feet_conf < 0.5):
+                        # Head or feet clipped directly at boundary with marginal confidence
                         kpts_ok = False
 
                 return best_box, kpts_ok, False
@@ -182,14 +199,14 @@ class QualityGateAndDetector:
         y1 = float(np.percentile(y_indices, 2))
         y2 = float(np.percentile(y_indices, 98))
 
-        # Check vertical coverage (person should occupy at least 45% of image height)
+        # Check vertical coverage (person should occupy at least 35% of image height)
         person_height = y2 - y1
-        if person_height < 0.40 * h:
+        if person_height < 0.35 * h:
             return None, False, False
 
         bbox = (x1, y1, x2, y2)
-        # If head or feet are too close to border, flag not fully visible
-        kpts_ok = (y1 >= 0.01 * h) and (y2 <= 0.99 * h)
+        # If head or feet are cut off right at border, flag not fully visible
+        kpts_ok = (y1 >= 0.005 * h) and (y2 <= 0.995 * h)
 
         return bbox, kpts_ok, False
 
