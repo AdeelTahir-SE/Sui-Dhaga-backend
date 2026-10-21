@@ -6,9 +6,19 @@ import { asyncHandler } from "../../utils/async-handler.js";
 import * as measurementsController from "./measurements.controller.js";
 import { createMeasurementSchema, updateMeasurementSchema } from "./measurements.validator.js";
 
+import { uploadSingleImage } from "../../middlewares/upload.middleware.js";
+
 export const measurementsRoutes = Router();
 
 const measurementAuth = [requireAuth, requireRole("customer", "tailor", "admin")];
+
+const optionalPhotoUpload = (req: any, res: any, next: any) => {
+  if (req.is("multipart/form-data")) {
+    return uploadSingleImage("image")(req, res, next);
+  }
+  next();
+};
+
 
 /**
  * @openapi
@@ -62,7 +72,7 @@ const measurementAuth = [requireAuth, requireRole("customer", "tailor", "admin")
  */
 measurementsRoutes.get("/measurements", ...measurementAuth, asyncHandler(measurementsController.getMeasurements));
 measurementsRoutes.get("/measurements/my", ...measurementAuth, asyncHandler(measurementsController.getMeasurements));
-measurementsRoutes.post("/measurements", requireAuth, requireRole("customer", "admin"), validate(createMeasurementSchema), asyncHandler(measurementsController.createMeasurement));
+measurementsRoutes.post("/measurements", requireAuth, requireRole("customer", "admin"), optionalPhotoUpload, validate(createMeasurementSchema), asyncHandler(measurementsController.createMeasurement));
 
 /**
  * @openapi

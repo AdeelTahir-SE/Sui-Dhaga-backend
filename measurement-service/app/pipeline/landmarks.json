@@ -1,0 +1,88 @@
+{
+  "source": "Derived directly from SHAPY upstream repository (mesh-mesh-intersection/data/smplx_measurements.yaml) and SMPL-X topology",
+  "smplx_topology_vertices": 10475,
+  "smplx_topology_faces": 20908,
+  "landmarks": {
+    "HeadTop": {
+      "face_idx": 2581,
+      "bc": [0.8277337276382795, 0.1422200962169292, 0.030046176144791284],
+      "description": "Top of head vertex region on canonical mesh used for stature measurement"
+    },
+    "HeelLeft": {
+      "face_idx": 15605,
+      "bc": [0.0, 1.0, 0.0],
+      "description": "Left heel contact landmark used for stature and floor distance"
+    },
+    "NippleRight": {
+      "face_idx": 18402,
+      "bc": [0.0, 0.0, 1.0],
+      "description": "Right nipple landmark defining the horizontal cutting plane for chest circumference"
+    },
+    "NippleLeft": {
+      "face_idx": 16306,
+      "bc": [1.0, 0.0, 0.0],
+      "description": "Left nipple landmark"
+    },
+    "BellyButton": {
+      "face_idx": 19229,
+      "bc": [0.0, 1.0, 0.0],
+      "description": "Navel landmark defining the horizontal cutting plane for waist circumference"
+    },
+    "Crotch": {
+      "face_idx": 6194,
+      "bc": [0.0, 0.0, 1.0],
+      "description": "Crotch landmark defining the horizontal cutting plane for hip circumference and inseam origin"
+    },
+    "ShoulderLeft": {
+      "face_idx": 3865,
+      "bc": [0.0, 0.0, 1.0],
+      "description": "Left acromion landmark for bi-acromial shoulder width and sleeve length"
+    },
+    "ShoulderRight": {
+      "face_idx": 18186,
+      "bc": [0.0, 0.0, 1.0],
+      "description": "Right acromion landmark for bi-acromial shoulder width"
+    },
+    "ElbowLeft": {
+      "face_idx": 3959,
+      "bc": [0.0, 1.0, 0.0],
+      "description": "Left elbow landmark for sleeve length articulation point"
+    },
+    "ElbowRight": {
+      "face_idx": 7846,
+      "bc": [0.0, 1.0, 0.0],
+      "description": "Right elbow landmark"
+    },
+    "WristLeft": {
+      "face_idx": 3363,
+      "bc": [1.0, 0.0, 0.0],
+      "description": "Left wrist landmark for sleeve length endpoint"
+    },
+    "WristRight": {
+      "face_idx": 6722,
+      "bc": [0.0, 0.0, 1.0],
+      "description": "Right wrist landmark"
+    },
+    "NeckBase": {
+      "face_idx": 18412,
+      "bc": [1.0, 0.0, 0.0],
+      "description": "Base of neck / C7 level for neck circumference cutting plane"
+    },
+    "AnkleLeft": {
+      "face_idx": 15600,
+      "bc": [0.0, 1.0, 0.0],
+      "description": "Left inner malleolus landmark for inseam bottom termination"
+    }
+  },
+  "tailoring_definitions": {
+    "height": "Vertical distance along Y axis between HeadTop and HeelLeft",
+    "chest": "2D convex hull perimeter of mesh intersection with horizontal plane at NippleRight height",
+    "waist": "2D convex hull perimeter of mesh intersection with horizontal plane at BellyButton height",
+    "hips": "2D convex hull perimeter of mesh intersection with horizontal plane at Crotch height",
+    "shoulder_width": "Euclidean bi-acromial distance between ShoulderLeft and ShoulderRight",
+    "sleeve_length": "Segmented sum of Euclidean distance from ShoulderLeft to ElbowLeft and ElbowLeft to WristLeft",
+    "inseam": "Vertical Y-distance from Crotch landmark to HeelLeft landmark",
+    "neck": "2D convex hull perimeter of mesh intersection with horizontal plane at NeckBase height",
+    "thigh": "2D convex hull perimeter of left leg intersection with horizontal plane 5 cm below Crotch"
+  }
+}

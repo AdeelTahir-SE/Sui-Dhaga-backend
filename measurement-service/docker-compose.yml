@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  measurement-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: suidhaga-measurement-service
+    ports:
+      - "8000:8000"
+    environment:
+      - DEVICE=cpu
+      - DATA_DIR=/app/data
+      - SMPLX_MODEL_PATH=/app/data/body_models/smplx
+      - SHAPY_CHECKPOINT_PATH=/app/data/trained_models/shapy/SHAPY_A
+      - CONCURRENCY_LIMIT=2
+      - INFERENCE_TIMEOUT_SECONDS=60
+    volumes:
+      # Mount proprietary model weights from host (not baked into image)
+      - ./data/body_models:/app/data/body_models:ro
+      - ./data/trained_models:/app/data/trained_models:ro
+    restart: unless-stopped

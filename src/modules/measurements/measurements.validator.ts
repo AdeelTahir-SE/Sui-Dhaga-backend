@@ -10,6 +10,10 @@ export const createMeasurementSchema = z
     title: z.string().optional(),
     profileName: z.string().optional(),
     unit: z.enum(["in", "cm", "inches"]).default("in"),
+    gender: z.enum(["male", "female", "neutral"]).optional(),
+    height: optionalMeasurementNumber,
+    heightCm: optionalMeasurementNumber,
+    weightKg: optionalMeasurementNumber,
     chest: optionalMeasurementNumber,
     waist: optionalMeasurementNumber,
     hips: optionalMeasurementNumber,
@@ -21,15 +25,12 @@ export const createMeasurementSchema = z
     neck: optionalMeasurementNumber,
     notes: z.string().optional(),
   })
-  .refine((data) => Boolean(data.title || data.profileName), {
-    message: "Title or profileName is required",
-    path: ["title"],
-  })
   .transform((data) => ({
     ...data,
     title: data.title || data.profileName || "My Measurements",
     unit: data.unit === "inches" ? "in" : data.unit,
   }));
+
 
 export const updateMeasurementSchema = z
   .object({

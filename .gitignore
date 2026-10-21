@@ -6,3 +6,24 @@ output/
 
 supabase/.temp
 supabase\.temp
+
+# Python & ML assets
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.venv/
+venv/
+
+# Model weights & checkpoint data (manual download only)
+measurement-service/data/
+*.npz
+*.pkl
+*.ckpt
+*.pt
+*.pth
+*.bin
