@@ -2,6 +2,7 @@
 
 Base Endpoint: `/api/v1`
 
+
 For complete endpoint listing, request/response formats, and status codes, see [`agents/endpoints.md`](file:///d:/Projects/Sui-Dhaga-backend/agents/endpoints.md) and [`agents/api-guidelines.md`](file:///d:/Projects/Sui-Dhaga-backend/agents/api-guidelines.md).
 
 ## Quick Endpoints Overview
