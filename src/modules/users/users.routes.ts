@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validation.middleware.js";
-import { uploadAvatar } from "../../middlewares/upload.middleware.js";
+import { uploadAvatarFlexible } from "../../middlewares/upload.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as usersController from "./users.controller.js";
 import {
   updateProfileSchema,
+  updateAvatarSchema,
   reportUserSchema,
   blockUserSchema,
 } from "./users.validator.js";
@@ -23,7 +24,7 @@ export const usersRoutes = Router();
  *       200:
  *         description: Profile details retrieved
  *   patch:
- *     summary: Update profile details for current user
+ *     summary: Update profile details and optional profile image for current user
  *     tags: [Users]
  *     security: [{ BearerAuth: [] }]
  *     requestBody:
@@ -34,28 +35,169 @@ export const usersRoutes = Router();
  *             type: object
  *             properties:
  *               name: { type: string, example: "Ayesha Khan" }
+ *               fullName: { type: string, example: "Ayesha Khan" }
  *               phone: { type: string, example: "+923001234567" }
  *               address: { type: string, example: "Gulberg III, Lahore" }
  *               bio: { type: string, example: "Fashion enthusiast" }
+ *               avatarUrl: { type: string, nullable: true, description: "Image URL or base64 data URI; pass null or empty string to remove" }
+ *               removeAvatar: { type: boolean }
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               avatar: { type: string, format: binary, description: "Optional profile image file (JPEG, PNG, WebP, GIF, SVG, AVIF, HEIC; max 5MB)" }
+ *               fullName: { type: string }
+ *               phone: { type: string }
+ *               address: { type: string }
+ *               bio: { type: string }
+ *     responses:
+ *       200:
+ *         description: Profile successfully updated
+ *   put:
+ *     summary: Update profile details and optional profile image for current user
+ *     tags: [Users]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string, example: "Ayesha Khan" }
+ *               fullName: { type: string, example: "Ayesha Khan" }
+ *               phone: { type: string, example: "+923001234567" }
+ *               address: { type: string, example: "Gulberg III, Lahore" }
+ *               bio: { type: string, example: "Fashion enthusiast" }
+ *               avatarUrl: { type: string, nullable: true }
+ *               removeAvatar: { type: boolean }
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               avatar: { type: string, format: binary }
+ *               fullName: { type: string }
+ *               phone: { type: string }
+ *               address: { type: string }
+ *               bio: { type: string }
  *     responses:
  *       200:
  *         description: Profile successfully updated
  */
 usersRoutes.get("/users/me", requireAuth, asyncHandler(usersController.getMyProfile));
-usersRoutes.patch("/users/me", requireAuth, validate(updateProfileSchema), asyncHandler(usersController.updateMyProfile));
+usersRoutes.patch(
+  "/users/me",
+  requireAuth,
+  uploadAvatarFlexible,
+  validate(updateProfileSchema),
+  asyncHandler(usersController.updateMyProfile)
+);
+usersRoutes.put(
+  "/users/me",
+  requireAuth,
+  uploadAvatarFlexible,
+  validate(updateProfileSchema),
+  asyncHandler(usersController.updateMyProfile)
+);
 
 /**
  * @swagger
  * /users/me/avatar:
  *   post:
- *     summary: Upload profile avatar picture to storage and update profile avatar_url
+ *     summary: Upload profile avatar image (multipart file, base64 data URI, or URL) and update profile avatar_url
+ *     tags: [Users]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               avatar:
+ *                 type: string
+ *                 format: binary
+ *                 description: Profile image file (JPEG, PNG, WebP, GIF, SVG, AVIF, HEIC; max 5MB; also accepts field names image, file, photo, picture, profileImage)
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               avatarUrl: { type: string, description: "Image URL or base64 data URI" }
+ *               avatar: { type: string, description: "Base64 data URI or image URL" }
+ *               image: { type: string, description: "Base64 data URI or image URL" }
+ *     responses:
+ *       200:
+ *         description: Avatar uploaded and profile updated successfully
+ *   put:
+ *     summary: Upload or replace profile avatar image
+ *     tags: [Users]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               avatar: { type: string, format: binary }
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               avatarUrl: { type: string }
+ *     responses:
+ *       200:
+ *         description: Avatar uploaded and profile updated successfully
+ *   patch:
+ *     summary: Upload or update profile avatar image
+ *     tags: [Users]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               avatar: { type: string, format: binary }
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               avatarUrl: { type: string }
+ *     responses:
+ *       200:
+ *         description: Avatar uploaded and profile updated successfully
+ *   delete:
+ *     summary: Remove custom profile avatar image from storage and reset profile avatar_url
  *     tags: [Users]
  *     security: [{ BearerAuth: [] }]
  *     responses:
  *       200:
- *         description: Avatar uploaded and profile updated successfully
+ *         description: Avatar removed successfully
  */
-usersRoutes.post("/users/me/avatar", requireAuth, uploadAvatar.single("avatar"), asyncHandler(usersController.updateAvatar));
+usersRoutes.post(
+  "/users/me/avatar",
+  requireAuth,
+  uploadAvatarFlexible,
+  validate(updateAvatarSchema),
+  asyncHandler(usersController.updateAvatar)
+);
+usersRoutes.put(
+  "/users/me/avatar",
+  requireAuth,
+  uploadAvatarFlexible,
+  validate(updateAvatarSchema),
+  asyncHandler(usersController.updateAvatar)
+);
+usersRoutes.patch(
+  "/users/me/avatar",
+  requireAuth,
+  uploadAvatarFlexible,
+  validate(updateAvatarSchema),
+  asyncHandler(usersController.updateAvatar)
+);
+usersRoutes.delete("/users/me/avatar", requireAuth, asyncHandler(usersController.deleteAvatar));
 
 /**
  * @openapi

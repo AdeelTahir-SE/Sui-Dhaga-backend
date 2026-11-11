@@ -1,16 +1,36 @@
 import { z } from "zod";
 
+const optionalBoolean = z
+  .union([z.boolean(), z.enum(["true", "false"])])
+  .transform((val) => val === true || val === "true")
+  .optional();
+
 export const updateProfileSchema = z.object({
-  name: z.string().optional(),
-  fullName: z.string().optional(),
-  full_name: z.string().optional(),
-  phone: z.string().optional(),
-  address: z.string().optional(),
-  bio: z.string().optional(),
+  name: z.string().trim().optional(),
+  fullName: z.string().trim().optional(),
+  full_name: z.string().trim().optional(),
+  phone: z.string().trim().optional(),
+  address: z.string().trim().optional(),
+  bio: z.string().trim().optional(),
+  avatarUrl: z.string().trim().nullable().optional(),
+  avatar_url: z.string().trim().nullable().optional(),
+  avatar: z.string().trim().nullable().optional(),
+  image: z.string().trim().nullable().optional(),
+  imageUrl: z.string().trim().nullable().optional(),
+  removeAvatar: optionalBoolean,
 });
 
 export const updateAvatarSchema = z.object({
-  avatarUrl: z.string().url().optional(),
+  avatarUrl: z.string().trim().nullable().optional(),
+  avatar_url: z.string().trim().nullable().optional(),
+  avatar: z.string().trim().nullable().optional(),
+  image: z.string().trim().nullable().optional(),
+  imageUrl: z.string().trim().nullable().optional(),
+  url: z.string().trim().nullable().optional(),
+  dataUrl: z.string().trim().nullable().optional(),
+  base64: z.string().trim().optional(),
+  mimeType: z.string().trim().optional(),
+  fileName: z.string().trim().optional(),
 });
 
 export const reportUserSchema = z.object({

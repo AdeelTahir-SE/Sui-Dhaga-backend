@@ -1,8 +1,231 @@
 import { getDbClient, toSnakeCase } from "../../utils/resource-helper.js";
 import { AppError } from "../../utils/app-error.js";
 import { storageService } from "../../services/storage.service.js";
+import { cacheService } from "../../services/cache.service.js";
 import { notificationsService } from "../notifications/notifications.service.js";
 import { isMissingTableError, throwDbError } from "../../utils/supabase-error.js";
+import {
+  decodeRawBase64Image,
+  extractStoragePathFromUrl,
+  isValidHttpImageUrl,
+  MAX_AVATAR_BYTES,
+  parseBase64ImageDataUri,
+  resolveImageFileMeta,
+} from "../../utils/image-upload.helper.js";
+
+const AVATAR_INPUT_KEYS = [
+  "avatarUrl",
+  "avatar_url",
+  "avatar",
+  "image",
+  "imageUrl",
+  "image_url",
+  "url",
+  "dataUrl",
+] as const;
+
+type ProfileClient = ReturnType<typeof getDbClient>;
+
+function formatUserProfileResponse(
+  profile: Record<string, any> | null | undefined,
+  extras: { email?: string; fallbackId?: string; fallbackRole?: string } = {}
+) {
+  const record = profile && typeof profile === "object" ? profile : null;
+  const avatarUrl = record?.avatar_url ?? null;
+  const fullName = record?.full_name ?? null;
+
+  return {
+    ...(record || {
+      id: extras.fallbackId,
+      role: extras.fallbackRole || "customer",
+      status: "active",
+      full_name: null,
+      bio: null,
+      avatar_url: null,
+      phone: null,
+      address: null,
+    }),
+    ...(extras.email ? { email: extras.email } : {}),
+    fullName,
+    avatarUrl,
+    avatar: avatarUrl,
+  };
+}
+
+async function resolveAvatarUploadSource(
+  userId: string,
+  file?: Express.Multer.File,
+  body: Record<string, unknown> = {}
+): Promise<{ url: string | null; uploadedPath: string | null; shouldChange: boolean }> {
+  if (file) {
+    const { extension, mimeType } = resolveImageFileMeta(file);
+    const storagePath = `${userId}/avatar-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
+    const { url } = await storageService.uploadFile("avatars", storagePath, file.buffer, mimeType);
+    return { url, uploadedPath: storagePath, shouldChange: true };
+  }
+
+  if (typeof body.base64 === "string" && body.base64.trim()) {
+    const { buffer, mimeType, extension } = decodeRawBase64Image(
+      body.base64,
+      typeof body.mimeType === "string" ? body.mimeType : undefined,
+      MAX_AVATAR_BYTES
+    );
+    const storagePath = `${userId}/avatar-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
+    const { url } = await storageService.uploadFile("avatars", storagePath, buffer, mimeType);
+    return { url, uploadedPath: storagePath, shouldChange: true };
+  }
+
+  if (body.removeAvatar === true) {
+    return { url: null, uploadedPath: null, shouldChange: true };
+  }
+
+  let hasExplicitClear = false;
+  for (const key of AVATAR_INPUT_KEYS) {
+    if (!(key in body)) continue;
+    const raw = body[key];
+    if (raw === null || raw === "") {
+      hasExplicitClear = true;
+      continue;
+    }
+    if (typeof raw !== "string") continue;
+
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      hasExplicitClear = true;
+      continue;
+    }
+
+    const parsedDataUri = parseBase64ImageDataUri(trimmed, MAX_AVATAR_BYTES);
+    if (parsedDataUri) {
+      const storagePath = `${userId}/avatar-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${parsedDataUri.extension}`;
+      const { url } = await storageService.uploadFile(
+        "avatars",
+        storagePath,
+        parsedDataUri.buffer,
+        parsedDataUri.mimeType
+      );
+      return { url, uploadedPath: storagePath, shouldChange: true };
+    }
+
+    if (isValidHttpImageUrl(trimmed)) {
+      return { url: trimmed, uploadedPath: null, shouldChange: true };
+    }
+
+    throw new AppError(
+      "Invalid avatar image. Provide an image file, base64 image data URI, or valid HTTP(S) image URL.",
+      400
+    );
+  }
+
+  if (hasExplicitClear) {
+    return { url: null, uploadedPath: null, shouldChange: true };
+  }
+
+  return { url: null, uploadedPath: null, shouldChange: false };
+}
+
+async function saveProfileFields(
+  client: ProfileClient,
+  userId: string,
+  userRole: string | undefined,
+  fields: Record<string, unknown>
+) {
+  const payload = {
+    ...fields,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data: updated, error } = await client
+    .from("profiles")
+    .update(payload)
+    .eq("id", userId)
+    .select()
+    .maybeSingle();
+
+  if (error && error.code !== "PGRST116") {
+    throw new AppError(error.message, 400);
+  }
+  if (updated) {
+    return updated;
+  }
+
+  const { data: upserted, error: upsertError } = await client
+    .from("profiles")
+    .upsert(
+      {
+        id: userId,
+        role: userRole || "customer",
+        ...payload,
+      },
+      { onConflict: "id" }
+    )
+    .select()
+    .single();
+
+  if (upsertError) {
+    throw new AppError(upsertError.message, 400);
+  }
+  return upserted;
+}
+
+async function syncUserAuthAndTailorCache(
+  client: ProfileClient,
+  userId: string,
+  updates: { fullName?: string; avatarUrl?: string | null }
+) {
+  try {
+    if (
+      (updates.fullName !== undefined || updates.avatarUrl !== undefined) &&
+      typeof client?.auth?.admin?.getUserById === "function" &&
+      typeof client?.auth?.admin?.updateUserById === "function"
+    ) {
+      const { data: lookup } = await client.auth.admin.getUserById(userId);
+      const currentMeta =
+        lookup?.user?.user_metadata && typeof lookup.user.user_metadata === "object"
+          ? lookup.user.user_metadata
+          : {};
+      const nextMeta: Record<string, unknown> = { ...currentMeta };
+
+      if (updates.fullName !== undefined) {
+        nextMeta.full_name = updates.fullName;
+        nextMeta.name = updates.fullName;
+      }
+      if (updates.avatarUrl !== undefined) {
+        nextMeta.avatar_url = updates.avatarUrl;
+        nextMeta.avatar = updates.avatarUrl;
+        nextMeta.picture = updates.avatarUrl;
+      }
+
+      await client.auth.admin.updateUserById(userId, { user_metadata: nextMeta });
+    }
+  } catch {}
+
+  if (updates.avatarUrl !== undefined || updates.fullName !== undefined) {
+    try {
+      const { data: tailor } = await client
+        .from("tailors")
+        .select("id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (tailor?.id) {
+        cacheService.del(`tailor:${tailor.id}`);
+      }
+      cacheService.delByPattern("tailors:*");
+    } catch {}
+  }
+}
+
+async function cleanupPreviousAvatar(
+  previousUrl: unknown,
+  nextUrl: string | null,
+  newPath: string | null,
+  userId: string
+) {
+  const oldPath = extractStoragePathFromUrl(previousUrl, "avatars", `${userId}/`);
+  if (oldPath && oldPath !== newPath && previousUrl !== nextUrl) {
+    await storageService.deleteFile("avatars", oldPath);
+  }
+}
 
 // In-memory fallback block cache for instant lookup and resiliency across environments
 const inMemoryBlocks = new Set<string>();
@@ -48,61 +271,155 @@ async function resolveProfileUserId(
 }
 
 export const usersService = {
-  async getMyProfile(userId: string, _userRole?: string) {
+  async getMyProfile(userId: string, userRole?: string, email?: string) {
     const client = getDbClient();
     const { data, error } = await client
       .from("profiles")
       .select("id, role, status, full_name, bio, avatar_url, phone, address, created_at, updated_at")
       .eq("id", userId)
-      .single();
+      .maybeSingle();
 
     if (error && error.code !== "PGRST116") {
       throw new AppError(error.message, 400);
     }
-    return data;
+
+    return formatUserProfileResponse(data, {
+      email,
+      fallbackId: userId,
+      fallbackRole: userRole,
+    });
   },
 
-  async updateMyProfile(userId: string, _userRole: string | undefined, data: Record<string, unknown>) {
+  async updateMyProfile(
+    userId: string,
+    userRole: string | undefined,
+    data: Record<string, unknown>,
+    file?: Express.Multer.File
+  ) {
     const client = getDbClient();
     const mapped = toSnakeCase(data);
-    if (mapped.name && !mapped.full_name) {
-      mapped.full_name = mapped.name;
-    }
-    delete mapped.name;
-    const { data: updated, error } = await client
-      .from("profiles")
-      .update(mapped)
-      .eq("id", userId)
-      .select()
-      .single();
+    const profileUpdates: Record<string, unknown> = {};
 
-    if (error) throw new AppError(error.message, 400);
-    return updated;
+    const resolvedName =
+      typeof data.fullName === "string"
+        ? data.fullName
+        : typeof data.full_name === "string"
+        ? data.full_name
+        : typeof data.name === "string"
+        ? data.name
+        : undefined;
+    if (resolvedName !== undefined) {
+      profileUpdates.full_name = resolvedName;
+    }
+
+    for (const col of ["phone", "address", "bio"] as const) {
+      if (mapped[col] !== undefined) {
+        profileUpdates[col] = mapped[col];
+      }
+    }
+
+    const avatarUpdate = await resolveAvatarUploadSource(userId, file, data);
+    let previousAvatarUrl: unknown;
+    if (avatarUpdate.shouldChange) {
+      try {
+        const { data: existing } = await client
+          .from("profiles")
+          .select("avatar_url")
+          .eq("id", userId)
+          .maybeSingle();
+        previousAvatarUrl = existing?.avatar_url;
+      } catch {}
+      profileUpdates.avatar_url = avatarUpdate.url;
+    }
+
+    const updated = await saveProfileFields(client, userId, userRole, profileUpdates);
+
+    if (avatarUpdate.shouldChange) {
+      await cleanupPreviousAvatar(
+        previousAvatarUrl,
+        avatarUpdate.url,
+        avatarUpdate.uploadedPath,
+        userId
+      );
+    }
+
+    await syncUserAuthAndTailorCache(client, userId, {
+      fullName: resolvedName,
+      ...(avatarUpdate.shouldChange ? { avatarUrl: avatarUpdate.url } : {}),
+    });
+
+    return formatUserProfileResponse(updated, {
+      fallbackId: userId,
+      fallbackRole: userRole,
+    });
   },
 
-  async updateAvatar(userId: string, _userRole: string | undefined, file: Express.Multer.File) {
-    if (!file || !file.buffer) {
-      throw new AppError("Avatar file is required", 400);
+  async updateAvatar(
+    userId: string,
+    userRole: string | undefined,
+    file?: Express.Multer.File,
+    body: Record<string, unknown> = {}
+  ) {
+    const avatarUpdate = await resolveAvatarUploadSource(userId, file, body);
+    if (!avatarUpdate.shouldChange || !avatarUpdate.url) {
+      throw new AppError(
+        "Avatar image file, base64 data URI, or valid image URL is required",
+        400
+      );
     }
 
-    const fileExt = file.originalname?.split(".").pop() || "png";
-    const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
-    const fileName = `${userId}/avatar-${Date.now()}.${cleanExt || "png"}`;
-
-    // Upload file to Supabase 'avatars' storage bucket
-    const { url } = await storageService.uploadFile("avatars", fileName, file.buffer, file.mimetype);
-
-    // Save avatar_url in profiles table
     const client = getDbClient();
-    const { data: updated, error } = await client
-      .from("profiles")
-      .update({ avatar_url: url })
-      .eq("id", userId)
-      .select()
-      .single();
+    let previousAvatarUrl: unknown;
+    try {
+      const { data: existing } = await client
+        .from("profiles")
+        .select("avatar_url")
+        .eq("id", userId)
+        .maybeSingle();
+      previousAvatarUrl = existing?.avatar_url;
+    } catch {}
 
-    if (error) throw new AppError(error.message, 400);
-    return updated;
+    const updated = await saveProfileFields(client, userId, userRole, {
+      avatar_url: avatarUpdate.url,
+    });
+
+    await cleanupPreviousAvatar(
+      previousAvatarUrl,
+      avatarUpdate.url,
+      avatarUpdate.uploadedPath,
+      userId
+    );
+
+    await syncUserAuthAndTailorCache(client, userId, {
+      avatarUrl: avatarUpdate.url,
+    });
+
+    return {
+      ...formatUserProfileResponse(updated, { fallbackId: userId, fallbackRole: userRole }),
+      url: avatarUpdate.url,
+    };
+  },
+
+  async deleteAvatar(userId: string, userRole?: string) {
+    const client = getDbClient();
+    let previousAvatarUrl: unknown;
+    try {
+      const { data: existing } = await client
+        .from("profiles")
+        .select("avatar_url")
+        .eq("id", userId)
+        .maybeSingle();
+      previousAvatarUrl = existing?.avatar_url;
+    } catch {}
+
+    const updated = await saveProfileFields(client, userId, userRole, {
+      avatar_url: null,
+    });
+
+    await cleanupPreviousAvatar(previousAvatarUrl, null, null, userId);
+    await syncUserAuthAndTailorCache(client, userId, { avatarUrl: null });
+
+    return formatUserProfileResponse(updated, { fallbackId: userId, fallbackRole: userRole });
   },
 
   async deleteMyProfile(userId: string, _userRole?: string) {

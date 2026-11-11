@@ -5,21 +5,33 @@ import { AppError } from "../../utils/app-error.js";
 import { usersService } from "./users.service.js";
 
 export const getMyProfile: RequestHandler = async (req, res) => {
-  const profile = await usersService.getMyProfile(req.user!.id, req.userRole);
+  const profile = await usersService.getMyProfile(req.user!.id, req.userRole, req.user?.email);
   success(res, profile, "Profile fetched successfully");
 };
 
 export const updateMyProfile: RequestHandler = async (req, res) => {
-  const updated = await usersService.updateMyProfile(req.user!.id, req.userRole, req.body);
+  const updated = await usersService.updateMyProfile(
+    req.user!.id,
+    req.userRole,
+    req.body,
+    req.file
+  );
   success(res, updated, "Profile updated successfully");
 };
 
 export const updateAvatar: RequestHandler = async (req, res) => {
-  if (!req.file) {
-    throw new AppError("Avatar file is required", 400);
-  }
-  const updated = await usersService.updateAvatar(req.user!.id, req.userRole, req.file);
+  const updated = await usersService.updateAvatar(
+    req.user!.id,
+    req.userRole,
+    req.file,
+    req.body
+  );
   success(res, updated, "Avatar updated successfully");
+};
+
+export const deleteAvatar: RequestHandler = async (req, res) => {
+  const updated = await usersService.deleteAvatar(req.user!.id, req.userRole);
+  success(res, updated, "Avatar removed successfully");
 };
 
 export const deleteMyProfile: RequestHandler = async (req, res) => {

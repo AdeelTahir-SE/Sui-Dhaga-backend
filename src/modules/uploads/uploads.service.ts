@@ -1,22 +1,50 @@
-import { storageService } from "../../services/storage.service.js";
+import { storageService, type StorageBucket } from "../../services/storage.service.js";
 import { AppError } from "../../utils/app-error.js";
+import {
+  isValidHttpImageUrl,
+  MAX_IMAGE_BYTES,
+  parseBase64ImageDataUri,
+  resolveImageFileMeta,
+} from "../../utils/image-upload.helper.js";
+
+const PUBLIC_IMAGE_BUCKETS = new Set<StorageBucket>([
+  "avatars",
+  "designs",
+  "tailor-gallery",
+  "tailor-banners",
+  "community-posts",
+  "message-attachments",
+  "references",
+  "order-designs",
+]);
+
+function resolveImageBucket(data: Record<string, unknown>): StorageBucket {
+  const requestedBucket = typeof data.bucket === "string" ? (data.bucket.trim() as StorageBucket) : undefined;
+  if (requestedBucket && PUBLIC_IMAGE_BUCKETS.has(requestedBucket)) {
+    return requestedBucket;
+  }
+  const folder = typeof data.folder === "string" ? data.folder.trim().toLowerCase() : "";
+  if (folder === "avatars") return "avatars";
+  if (folder === "order-designs") return "order-designs";
+  return "references";
+}
 
 export const uploadsService = {
   async uploadImage(userId: string | undefined, _userRole: string | undefined, file?: Express.Multer.File, data: Record<string, unknown> = {}) {
-    if (file) {
-      const folder = (data.folder as string) || "general";
-      const bucket = ((data.bucket as string) || (folder === "order-designs" ? "order-designs" : "references")) as import("../../services/storage.service.js").StorageBucket;
-      const fileExt = file.originalname?.split(".").pop() || "png";
-      const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
-      const path = `${folder}/${userId || "public"}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
+    const folder = (typeof data.folder === "string" && data.folder.trim()) || "general";
+    const bucket = resolveImageBucket(data);
 
-      const { url } = await storageService.uploadFile(bucket, path, file.buffer, file.mimetype);
+    if (file) {
+      const { extension, mimeType } = resolveImageFileMeta(file);
+      const path = `${folder}/${userId || "public"}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${extension}`;
+
+      const { url } = await storageService.uploadFile(bucket, path, file.buffer, mimeType);
 
       return {
         fileId: path,
         userId,
         mediaType: "image",
-        mimeType: file.mimetype,
+        mimeType,
         size: file.size,
         originalName: file.originalname,
         url,
@@ -24,16 +52,35 @@ export const uploadsService = {
       };
     }
 
-    const fallbackUrl = (data.url || data.imageUrl || data.image) as string;
-    if (!fallbackUrl) {
-      throw new AppError("Image file or URL is required", 400);
+    const rawCandidate = (data.url || data.imageUrl || data.image || data.avatarUrl || data.avatar) as string | undefined;
+    if (!rawCandidate || typeof rawCandidate !== "string" || !rawCandidate.trim()) {
+      throw new AppError("Image file, base64 data URI, or URL is required", 400);
+    }
+
+    const parsedDataUri = parseBase64ImageDataUri(rawCandidate, MAX_IMAGE_BYTES);
+    if (parsedDataUri) {
+      const path = `${folder}/${userId || "public"}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${parsedDataUri.extension}`;
+      const { url } = await storageService.uploadFile(bucket, path, parsedDataUri.buffer, parsedDataUri.mimeType);
+      return {
+        fileId: path,
+        userId,
+        mediaType: "image",
+        mimeType: parsedDataUri.mimeType,
+        size: parsedDataUri.buffer.length,
+        url,
+        uploadedAt: new Date().toISOString(),
+      };
+    }
+
+    if (!isValidHttpImageUrl(rawCandidate)) {
+      throw new AppError("Invalid image URL or data URI", 400);
     }
 
     return {
       fileId: `img-${Date.now()}`,
       userId,
       mediaType: "image",
-      url: fallbackUrl,
+      url: rawCandidate.trim(),
       uploadedAt: new Date().toISOString(),
       ...data,
     };

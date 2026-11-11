@@ -1,5 +1,11 @@
+import type { RequestHandler } from "express";
 import multer from "multer";
 import { AppError } from "../utils/app-error.js";
+import {
+  isSupportedImageFile,
+  MAX_AVATAR_BYTES,
+  MAX_IMAGE_BYTES,
+} from "../utils/image-upload.helper.js";
 
 // Memory storage to keep uploaded files in buffer for Supabase Storage uploads
 const storage = multer.memoryStorage();
@@ -11,6 +17,9 @@ export const ALLOWED_IMAGE_TYPES = [
   "image/webp",
   "image/gif",
   "image/svg+xml",
+  "image/avif",
+  "image/heic",
+  "image/heif",
 ];
 
 export const ALLOWED_DOCUMENT_TYPES = [
@@ -52,13 +61,12 @@ export const ALLOWED_DOCUMENT_TYPES = [
 ];
 
 const imageFileFilter: multer.Options["fileFilter"] = (_req, file, cb) => {
-  const mime = (file.mimetype || "").toLowerCase();
-  if (ALLOWED_IMAGE_TYPES.includes(mime) || mime.startsWith("image/")) {
+  if (isSupportedImageFile(file.mimetype, file.originalname)) {
     cb(null, true);
   } else {
     cb(
       new AppError(
-        `Invalid image format: ${file.mimetype}. Allowed formats: JPEG, PNG, WebP, GIF, SVG`,
+        `Invalid image format: ${file.mimetype}. Allowed formats: JPEG, PNG, WebP, GIF, SVG, AVIF, HEIC`,
         400
       )
     );
@@ -108,11 +116,41 @@ const documentFileFilter: multer.Options["fileFilter"] = (_req, file, cb) => {
 export const uploadAvatar = multer({
   storage,
   limits: {
-    fileSize: 5 * 1024 * 1024,
+    fileSize: MAX_AVATAR_BYTES,
     files: 1,
   },
   fileFilter: imageFileFilter,
 });
+
+/**
+ * Accepts a single image under any common multipart field name (`avatar`, `image`, `file`, etc.)
+ * while passing JSON requests straight through untouched.
+ */
+export const uploadFlexibleSingleImage = (maxSizeBytes = MAX_IMAGE_BYTES): RequestHandler => {
+  const parser = multer({
+    storage,
+    limits: { fileSize: maxSizeBytes, files: 1 },
+    fileFilter: imageFileFilter,
+  }).any();
+
+  return (req, res, next) => {
+    const contentType = (req.headers["content-type"] || "").toLowerCase();
+    if (!contentType.includes("multipart/form-data")) {
+      return next();
+    }
+
+    return parser(req, res, (err) => {
+      if (err) return next(err);
+      const files = req.files as Express.Multer.File[] | undefined;
+      if (!req.file && Array.isArray(files) && files.length > 0) {
+        req.file = files[0];
+      }
+      return next();
+    });
+  };
+};
+
+export const uploadAvatarFlexible = uploadFlexibleSingleImage(MAX_AVATAR_BYTES);
 
 // Single image upload helper
 export const uploadSingleImage = (fieldName: string = "image", maxSizeBytes = 10 * 1024 * 1024) =>

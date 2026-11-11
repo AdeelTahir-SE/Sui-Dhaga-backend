@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
-import { uploadSingleImage } from "../../middlewares/upload.middleware.js";
+import { uploadFlexibleSingleImage } from "../../middlewares/upload.middleware.js";
+import { MAX_IMAGE_BYTES } from "../../utils/image-upload.helper.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as uploadsController from "./uploads.controller.js";
 
@@ -42,7 +43,7 @@ export const uploadsRoutes = Router();
  *       201:
  *         description: Image uploaded successfully
  */
-uploadsRoutes.post("/uploads/image", requireAuth, uploadSingleImage("image"), asyncHandler(uploadsController.uploadImage));
+uploadsRoutes.post("/uploads/image", requireAuth, uploadFlexibleSingleImage(MAX_IMAGE_BYTES), asyncHandler(uploadsController.uploadImage));
 
 
 

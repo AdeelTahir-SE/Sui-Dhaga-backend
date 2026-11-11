@@ -9,12 +9,13 @@ process.env.SUPABASE_URL = process.env.SUPABASE_URL || "https://example.supabase
 process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "service-role-test-key";
 process.env.SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "anon-test-key";
 
-const [{ app }, { apiRoutes }, { supabase }, { emailService }, { buildTechPackPdfBuffer }, { aiService }, { isMissingTableError, isMissingColumnError }, { getAllowedOrigins }] =
+const [{ app }, { apiRoutes }, { supabase }, { emailService }, { storageService }, { buildTechPackPdfBuffer }, { aiService }, { isMissingTableError, isMissingColumnError }, { getAllowedOrigins }] =
   await Promise.all([
     import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/app.js").href),
     import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/routes/index.js").href),
     import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/config/supabase.js").href),
     import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/services/email.service.js").href),
+    import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/services/storage.service.js").href),
     import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/utils/pdf-generator.js").href),
     import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/services/ai.service.js").href),
     import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/utils/supabase-error.js").href),
@@ -38,7 +39,12 @@ class MockSocket extends Duplex {
 }
 
 async function invokeApp(method, path, bodyObj = undefined, headers = {}) {
-  const rawBody = bodyObj !== undefined ? Buffer.from(JSON.stringify(bodyObj)) : null;
+  const isRawBuffer = Buffer.isBuffer(bodyObj);
+  const rawBody = isRawBuffer
+    ? bodyObj
+    : bodyObj !== undefined
+      ? Buffer.from(JSON.stringify(bodyObj))
+      : null;
   const socket = new MockSocket();
   const req = new http.IncomingMessage(socket);
   req.method = method;
@@ -49,10 +55,17 @@ async function invokeApp(method, path, bodyObj = undefined, headers = {}) {
   req.headers = {
     host: "localhost",
     ...(rawBody
-      ? { "content-type": "application/json", "content-length": String(rawBody.length) }
+      ? {
+          ...(isRawBuffer ? {} : { "content-type": "application/json" }),
+          "content-length": String(rawBody.length),
+        }
       : {}),
     ...normalizedHeaders,
   };
+  if (isRawBuffer) {
+    req.pause();
+    req.complete = true;
+  }
   if (rawBody) req.push(rawBody);
   req.push(null);
 
@@ -265,6 +278,13 @@ describe("Sui-Dhaga Backend Gaps Fulfillment Suite", () => {
         "POST /api/v1/reviews/:reviewId/reply",
         "POST /api/v1/auth/change-password",
         "POST /api/v1/auth/resend-confirmation",
+        "GET /api/v1/users/me",
+        "PATCH /api/v1/users/me",
+        "PUT /api/v1/users/me",
+        "POST /api/v1/users/me/avatar",
+        "PUT /api/v1/users/me/avatar",
+        "PATCH /api/v1/users/me/avatar",
+        "DELETE /api/v1/users/me/avatar",
         "GET /api/v1/addresses",
         "POST /api/v1/addresses",
         "GET /api/v1/payment-methods",
@@ -1375,6 +1395,228 @@ describe("Sui-Dhaga Backend Gaps Fulfillment Suite", () => {
       assert.equal(untrustedConfirm.status, 200);
       assert.ok(!String(untrustedConfirm.body).includes("evil.example.com"));
       assert.match(String(untrustedConfirm.body), /suidhagamobile:\/\/auth\/callback/);
+    });
+  });
+
+  describe("Settings Profile Image Upload Flows", () => {
+    function buildMultipartBody(fields = {}, file = undefined) {
+      const boundary = "----SuiDhagaTestBoundary7d9e";
+      const chunks = [];
+
+      for (const [key, value] of Object.entries(fields)) {
+        chunks.push(
+          Buffer.from(
+            `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`,
+            "utf8"
+          )
+        );
+      }
+
+      if (file) {
+        chunks.push(
+          Buffer.from(
+            `--${boundary}\r\nContent-Disposition: form-data; name="${file.fieldName}"; filename="${file.filename}"\r\nContent-Type: ${file.contentType}\r\n\r\n`,
+            "utf8"
+          )
+        );
+        chunks.push(file.buffer);
+        chunks.push(Buffer.from("\r\n", "utf8"));
+      }
+
+      chunks.push(Buffer.from(`--${boundary}--\r\n`, "utf8"));
+      return {
+        body: Buffer.concat(chunks),
+        contentType: `multipart/form-data; boundary=${boundary}`,
+      };
+    }
+
+    it("uploads multipart profile images under any common field name, cleans up old avatars, and supports PATCH /users/me + DELETE /users/me/avatar", async () => {
+      mockUserAuth({ id: "user-prof-1", email: "ayesha@example.com", role: "customer" });
+
+      const uploadedCalls = [];
+      const deletedCalls = [];
+      const uploadMock = mock.method(storageService, "uploadFile", async (bucket, path, buffer, mimeType) => {
+        uploadedCalls.push({ bucket, path, size: buffer.length, mimeType });
+        return {
+          path,
+          url: `https://example.supabase.co/storage/v1/object/public/${bucket}/${path}`,
+        };
+      });
+      const deleteMock = mock.method(storageService, "deleteFile", async (bucket, path) => {
+        deletedCalls.push({ bucket, path });
+        return true;
+      });
+      cleanups.push(() => uploadMock.mock.restore());
+      cleanups.push(() => deleteMock.mock.restore());
+
+      let currentProfile = {
+        id: "user-prof-1",
+        role: "customer",
+        status: "active",
+        full_name: "Ayesha",
+        avatar_url: "https://example.supabase.co/storage/v1/object/public/avatars/user-prof-1/old-avatar.png",
+        phone: "+923001112233",
+        address: "Lahore",
+        bio: null,
+      };
+
+      mockDb({
+        profiles: (state) => {
+          if (state.op === "update" || state.op === "upsert") {
+            currentProfile = { ...currentProfile, ...state.payload };
+            return { data: currentProfile };
+          }
+          return { data: currentProfile };
+        },
+        tailors: () => ({ data: null }),
+      });
+
+      const metaUpdates = [];
+      const getByIdMock = mock.method(supabase.auth.admin, "getUserById", async () => ({
+        data: { user: { id: "user-prof-1", user_metadata: {} } },
+        error: null,
+      }));
+      const updateMetaMock = mock.method(supabase.auth.admin, "updateUserById", async (_id, attrs) => {
+        metaUpdates.push(attrs.user_metadata);
+        return { data: { user: { id: "user-prof-1" } }, error: null };
+      });
+      cleanups.push(() => getByIdMock.mock.restore());
+      cleanups.push(() => updateMetaMock.mock.restore());
+
+      // 1. Multipart upload using field name "image" (not just "avatar") with octet-stream fallback
+      const pngBytes = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+      const avatarForm = buildMultipartBody(
+        {},
+        {
+          fieldName: "image",
+          filename: "profile-photo.png",
+          contentType: "application/octet-stream",
+          buffer: pngBytes,
+        }
+      );
+
+      const avatarRes = await invokeApp("POST", "/api/v1/users/me/avatar", avatarForm.body, {
+        authorization: "Bearer test-token",
+        "content-type": avatarForm.contentType,
+      });
+
+      assert.equal(avatarRes.status, 200);
+      assert.equal(uploadedCalls.length, 1);
+      assert.equal(uploadedCalls[0].bucket, "avatars");
+      assert.equal(uploadedCalls[0].mimeType, "image/png");
+      assert.match(uploadedCalls[0].path, /^user-prof-1\/avatar-.*\.png$/);
+      assert.equal(avatarRes.body.data.avatarUrl, avatarRes.body.data.avatar_url);
+      assert.equal(avatarRes.body.data.avatar, avatarRes.body.data.avatar_url);
+      assert.equal(avatarRes.body.data.url, avatarRes.body.data.avatar_url);
+      assert.deepEqual(deletedCalls, [{ bucket: "avatars", path: "user-prof-1/old-avatar.png" }]);
+      assert.equal(metaUpdates[0]?.avatar_url, avatarRes.body.data.avatar_url);
+
+      // 2. Combined Settings form save via PATCH /api/v1/users/me (text fields + multipart file)
+      const firstUrl = avatarRes.body.data.avatar_url;
+      const settingsForm = buildMultipartBody(
+        { fullName: "Ayesha Tariq", bio: "Bridal & Couture" },
+        {
+          fieldName: "profileImage",
+          filename: "updated.webp",
+          contentType: "image/webp",
+          buffer: Buffer.from("524946460000000057454250", "hex"),
+        }
+      );
+
+      const settingsRes = await invokeApp("PATCH", "/api/v1/users/me", settingsForm.body, {
+        authorization: "Bearer test-token",
+        "content-type": settingsForm.contentType,
+      });
+
+      assert.equal(settingsRes.status, 200);
+      assert.equal(settingsRes.body.data.full_name, "Ayesha Tariq");
+      assert.equal(settingsRes.body.data.fullName, "Ayesha Tariq");
+      assert.equal(settingsRes.body.data.bio, "Bridal & Couture");
+      assert.notEqual(settingsRes.body.data.avatar_url, firstUrl);
+      assert.equal(deletedCalls.length, 2);
+
+      // 3. Remove custom profile photo via DELETE /api/v1/users/me/avatar
+      const deleteRes = await invokeApp("DELETE", "/api/v1/users/me/avatar", undefined, {
+        authorization: "Bearer test-token",
+      });
+      assert.equal(deleteRes.status, 200);
+      assert.equal(deleteRes.body.data.avatar_url, null);
+      assert.equal(deleteRes.body.data.avatarUrl, null);
+      assert.equal(deletedCalls.length, 3);
+    });
+
+    it("supports base64 data URI avatar uploads on PUT /users/me/avatar & POST /uploads/image, and rejects invalid inputs", async () => {
+      mockUserAuth({ id: "user-prof-2", email: "sana@example.com", role: "customer" });
+
+      const uploadedCalls = [];
+      const uploadMock = mock.method(storageService, "uploadFile", async (bucket, path, buffer, mimeType) => {
+        uploadedCalls.push({ bucket, path, size: buffer.length, mimeType });
+        return {
+          path,
+          url: `https://example.supabase.co/storage/v1/object/public/${bucket}/${path}`,
+        };
+      });
+      cleanups.push(() => uploadMock.mock.restore());
+
+      mockDb({
+        profiles: (state) => {
+          if (state.op === "update" || state.op === "upsert") {
+            return { data: { id: "user-prof-2", role: "customer", ...state.payload } };
+          }
+          return { data: { id: "user-prof-2", role: "customer", avatar_url: null } };
+        },
+        tailors: () => ({ data: null }),
+      });
+
+      const samplePngBase64 =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+      const putDataUriRes = await invokeApp(
+        "PUT",
+        "/api/v1/users/me/avatar",
+        { avatar: samplePngBase64 },
+        { authorization: "Bearer test-token" }
+      );
+      assert.equal(putDataUriRes.status, 200);
+      assert.equal(uploadedCalls[0].bucket, "avatars");
+      assert.equal(uploadedCalls[0].mimeType, "image/png");
+      assert.match(putDataUriRes.body.data.avatarUrl, /^https:\/\/example\.supabase\.co\/storage\/v1\/object\/public\/avatars\//);
+
+      // Uploads endpoint with folder="avatars" also stores decoded data URI in avatars bucket
+      const uploadEndpointRes = await invokeApp(
+        "POST",
+        "/api/v1/uploads/image",
+        { folder: "avatars", image: samplePngBase64 },
+        { authorization: "Bearer test-token" }
+      );
+      assert.equal(uploadEndpointRes.status, 201);
+      assert.equal(uploadedCalls[1].bucket, "avatars");
+      assert.match(uploadEndpointRes.body.data.url, /\/avatars\/avatars\/user-prof-2\//);
+
+      // Invalid scheme / HTML data URI / empty payload rejected cleanly with 400
+      const invalidSchemeRes = await invokeApp(
+        "POST",
+        "/api/v1/users/me/avatar",
+        { avatarUrl: "javascript:alert(1)" },
+        { authorization: "Bearer test-token" }
+      );
+      assert.equal(invalidSchemeRes.status, 400);
+
+      const nonImageDataUri = await invokeApp(
+        "POST",
+        "/api/v1/users/me/avatar",
+        { image: "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==" },
+        { authorization: "Bearer test-token" }
+      );
+      assert.equal(nonImageDataUri.status, 400);
+
+      const emptyAvatarRes = await invokeApp(
+        "POST",
+        "/api/v1/users/me/avatar",
+        {},
+        { authorization: "Bearer test-token" }
+      );
+      assert.equal(emptyAvatarRes.status, 400);
     });
   });
 });
