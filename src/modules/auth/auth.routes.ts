@@ -208,6 +208,45 @@ authRoutes.get("/google-url", asyncHandler(authController.getGoogleAuthUrl));
  *       200:
  *         description: HTML bridge that deep links tokens back to mobile app
  */
+/**
+ * @swagger
+ * /auth/callback:
+ *   get:
+ *     summary: Generic OAuth callback bridge for web and mobile deep linking
+ *     tags: [Auth]
+ *     security: []
+ *     parameters:
+ *       - in: query
+ *         name: appRedirect
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: HTML bridge that deep links tokens back to app
+ * /auth/confirm:
+ *   get:
+ *     summary: Email verification confirmation bridge
+ *     tags: [Auth]
+ *     security: []
+ *     parameters:
+ *       - in: query
+ *         name: appRedirect
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: HTML bridge completing confirmation redirect
+ * /auth/verify:
+ *   get:
+ *     summary: Account verification link bridge
+ *     tags: [Auth]
+ *     security: []
+ *     parameters:
+ *       - in: query
+ *         name: appRedirect
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: HTML bridge completing verification redirect
+ */
 authRoutes.get("/google/callback", authController.googleCallback);
 
 /**

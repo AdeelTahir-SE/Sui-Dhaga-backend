@@ -196,6 +196,65 @@ tailorsRoutes.get("/tailors/map", asyncHandler(tailorsController.getTailorsMap))
  *     responses:
  *       200:
  *         description: Payout settings saved
+ *   patch:
+ *     summary: Partially update payout bank/wallet settings for authenticated tailor
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               provider: { type: string, enum: [bank_transfer, jazzcash, easypaisa, sadapay, nayapay, stripe] }
+ *               accountTitle: { type: string }
+ *               accountNumber: { type: string }
+ *               bankName: { type: string }
+ *               iban: { type: string }
+ *               walletPhone: { type: string }
+ *               autoPayout: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Payout settings saved
+ * /tailors/me:
+ *   get:
+ *     summary: Get tailor profile for currently authenticated tailor user
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Tailor profile retrieved
+ * /tailors/earnings:
+ *   get:
+ *     summary: Get tailor earnings summary, available balance, and payout history (alias of /tailors/payouts)
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Tailor earnings and balance summary
+ * /tailors/payouts/settings:
+ *   get:
+ *     summary: Get saved payout bank/wallet settings (alias of /tailors/payout-settings)
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Payout settings retrieved
+ *   put:
+ *     summary: Save or update payout bank/wallet settings (alias of /tailors/payout-settings)
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Payout settings saved
+ *   patch:
+ *     summary: Partially update payout bank/wallet settings (alias of /tailors/payout-settings)
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Payout settings saved
  */
 tailorsRoutes.get("/tailors/me", requireAuth, asyncHandler(tailorsController.getMyTailorProfile));
 tailorsRoutes.get("/tailors/earnings", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.getPayouts));
@@ -252,7 +311,75 @@ tailorsRoutes.patch("/tailors/:tailorId", requireAuth, requireRole("tailor", "ad
  */
 /**
  * @swagger
+ * /tailors/services/{serviceId}:
+ *   put:
+ *     summary: Replace or update a tailor service (tailor/admin)
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: serviceId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title: { type: string }
+ *               price: { type: number }
+ *               description: { type: string }
+ *               category: { type: string }
+ *               isActive: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Service updated
+ *   patch:
+ *     summary: Partially update a tailor service
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: serviceId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Service updated
+ *   delete:
+ *     summary: Delete a tailor service
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: serviceId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Service deleted
+ */
+/**
+ * @swagger
  * /tailors/{tailorId}/services/{serviceId}:
+ *   put:
+ *     summary: Replace or update a tailor service under tailor context
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: serviceId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Service updated
  *   patch:
  *     summary: Update a tailor service
  *     tags: [Tailors]
@@ -391,6 +518,33 @@ tailorsRoutes.put("/tailors/:tailorId/availability/blocked-dates", requireAuth, 
  *         description: Availability slot added
  */
 tailorsRoutes.get("/tailors/:tailorId/availability", asyncHandler(tailorsController.getTailorAvailability));
+/**
+ * @swagger
+ * /tailors/{tailorId}/availability:
+ *   put:
+ *     summary: Replace or upsert tailor availability slots
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               dayOfWeek: { type: string, example: "Monday" }
+ *               startTime: { type: string, example: "10:00" }
+ *               endTime: { type: string, example: "19:00" }
+ *               isAvailable: { type: boolean, default: true }
+ *     responses:
+ *       200:
+ *         description: Availability schedule updated
+ */
 tailorsRoutes.put("/tailors/:tailorId/availability", requireAuth, requireRole("tailor", "admin"), validate(tailorAvailabilitySchema), asyncHandler(tailorsController.setTailorAvailability));
 tailorsRoutes.post("/tailors/:tailorId/availability", requireAuth, requireRole("tailor", "admin"), validate(tailorAvailabilitySchema), asyncHandler(tailorsController.setTailorAvailability));
 

@@ -46,6 +46,44 @@ export const blogRoutes = Router();
  *     responses:
  *       200:
  *         description: Blog article retrieved
+ *   patch:
+ *     summary: Update a blog article by slug or ID (Admin only)
+ *     tags: [Blog]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title: { type: string }
+ *               excerpt: { type: string }
+ *               content: { type: string }
+ *               category: { type: string }
+ *               tags: { type: array, items: { type: string } }
+ *               coverImageUrl: { type: string, format: uri }
+ *               isPublished: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Blog article updated
+ *   delete:
+ *     summary: Delete a blog article by slug or ID (Admin only)
+ *     tags: [Blog]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Blog article deleted
  */
 blogRoutes.get("/blog", asyncHandler(blogController.listPosts));
 blogRoutes.get("/blog/:slug", asyncHandler(blogController.getPostBySlug));

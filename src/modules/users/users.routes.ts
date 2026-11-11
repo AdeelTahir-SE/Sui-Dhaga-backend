@@ -40,13 +40,6 @@ export const usersRoutes = Router();
  *     responses:
  *       200:
  *         description: Profile successfully updated
- *   delete:
- *     summary: Soft delete / deactivate user profile
- *     tags: [Users]
- *     security: [{ BearerAuth: [] }]
- *     responses:
- *       200:
- *         description: Profile deleted successfully
  */
 usersRoutes.get("/users/me", requireAuth, asyncHandler(usersController.getMyProfile));
 usersRoutes.patch("/users/me", requireAuth, validate(updateProfileSchema), asyncHandler(usersController.updateMyProfile));
@@ -64,6 +57,93 @@ usersRoutes.patch("/users/me", requireAuth, validate(updateProfileSchema), async
  */
 usersRoutes.post("/users/me/avatar", requireAuth, uploadAvatar.single("avatar"), asyncHandler(usersController.updateAvatar));
 
+/**
+ * @openapi
+ * /users/blocked:
+ *   get:
+ *     summary: List users blocked by authenticated user
+ *     tags: [Users]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Blocked users list retrieved successfully
+ * /users/report:
+ *   post:
+ *     summary: Report a user for inappropriate behavior
+ *     tags: [Users]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               targetId: { type: string }
+ *               reason: { type: string }
+ *               details: { type: string }
+ *     responses:
+ *       200:
+ *         description: Report submitted successfully
+ * /users/block:
+ *   post:
+ *     summary: Block another user
+ *     tags: [Users]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               targetId: { type: string }
+ *     responses:
+ *       200:
+ *         description: User blocked successfully
+ * /users/unblock:
+ *   post:
+ *     summary: Unblock a previously blocked user
+ *     tags: [Users]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               targetId: { type: string }
+ *     responses:
+ *       200:
+ *         description: User unblocked successfully
+ * /users/{userId}/block-status:
+ *   get:
+ *     summary: Check whether a user is blocked by the authenticated user
+ *     tags: [Users]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Block status returned
+ * /users/{userId}/follow-status:
+ *   get:
+ *     summary: Check whether authenticated user follows the target user
+ *     tags: [Community]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Follow status returned
+ */
 // Specific endpoints MUST precede the parametrized :userId route
 usersRoutes.get("/users/blocked", requireAuth, asyncHandler(usersController.getBlockedUsers));
 usersRoutes.post("/users/report", requireAuth, validate(reportUserSchema), asyncHandler(usersController.reportUser));

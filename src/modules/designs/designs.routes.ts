@@ -343,6 +343,112 @@ designsRoutes.post("/designs/:designId/share-with-tailor", ...designAuth, valida
 designsRoutes.get("/designs/:designId/chat", ...designAuth, asyncHandler(designsController.getDesignChat));
 designsRoutes.post("/designs/:designId/chat", ...designAuth, validate(designChatSchema), asyncHandler(designsController.postDesignChat));
 
+/**
+ * @openapi
+ * /designs/{designId}/colors:
+ *   patch:
+ *     summary: Update design color palette
+ *     tags: [Designs]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: designId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             oneOf:
+ *               - type: array
+ *                 items: { type: string }
+ *               - type: object
+ *                 additionalProperties: true
+ *     responses:
+ *       200:
+ *         description: Design colors updated successfully
+ * /designs/{designId}/fabric:
+ *   patch:
+ *     summary: Update design fabric selection and details
+ *     tags: [Designs]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: designId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: true
+ *     responses:
+ *       200:
+ *         description: Design fabric updated successfully
+ * /designs/{designId}/embroidery:
+ *   patch:
+ *     summary: Update design embroidery details and placement
+ *     tags: [Designs]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: designId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: true
+ *     responses:
+ *       200:
+ *         description: Design embroidery updated successfully
+ * /designs/{designId}/measurements:
+ *   patch:
+ *     summary: Attach or update measurements snapshot for a design
+ *     tags: [Designs]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: designId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: true
+ *     responses:
+ *       200:
+ *         description: Design measurements updated successfully
+ * /designs/{designId}/notes:
+ *   patch:
+ *     summary: Update design tailoring and styling notes
+ *     tags: [Designs]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: designId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: true
+ *     responses:
+ *       200:
+ *         description: Design notes updated successfully
+ */
 designsRoutes.patch("/designs/:designId/colors", ...designAuth, validate(z.union([z.array(z.string()), z.record(z.unknown())])), asyncHandler(designsController.updateColors));
 designsRoutes.patch("/designs/:designId/fabric", ...designAuth, validate(z.record(z.unknown())), asyncHandler(designsController.updateFabric));
 designsRoutes.patch("/designs/:designId/embroidery", ...designAuth, validate(z.record(z.unknown())), asyncHandler(designsController.updateEmbroidery));

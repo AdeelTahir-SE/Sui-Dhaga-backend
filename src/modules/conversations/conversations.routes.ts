@@ -63,6 +63,18 @@ export const conversationsRoutes = Router();
  */
 conversationsRoutes.get("/conversations", requireAuth, asyncHandler(conversationsController.getConversations));
 conversationsRoutes.post("/conversations", requireAuth, validate(createConversationSchema), asyncHandler(conversationsController.createConversation));
+/**
+ * @openapi
+ * /conversations/realtime-config:
+ *   get:
+ *     summary: Get Supabase realtime channel configuration for chat subscriptions
+ *     tags: [Conversations]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Realtime configuration retrieved successfully
+ */
 conversationsRoutes.get("/conversations/realtime-config", requireAuth, asyncHandler(conversationsController.getRealtimeConfig));
 
 /**
@@ -263,6 +275,24 @@ conversationsRoutes.get("/conversations/:conversationId", requireAuth, asyncHand
  */
 conversationsRoutes.get("/conversations/:conversationId/messages", requireAuth, asyncHandler(conversationsController.getMessages));
 conversationsRoutes.post("/conversations/:conversationId/messages", requireAuth, uploadChatMedia(), validate(sendMessageSchema), asyncHandler(conversationsController.sendMessage));
+/**
+ * @openapi
+ * /conversations/{conversationId}/read:
+ *   patch:
+ *     summary: Mark all unread messages in a conversation as read
+ *     tags: [Conversations]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: conversationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Conversation marked as read
+ */
 conversationsRoutes.patch("/conversations/:conversationId/read", requireAuth, asyncHandler(conversationsController.markConversationRead));
 
 /**

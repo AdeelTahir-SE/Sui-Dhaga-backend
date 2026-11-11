@@ -55,6 +55,18 @@ export const paymentMethodsRoutes = Router();
  *     responses:
  *       200:
  *         description: Payment method updated
+ *   put:
+ *     summary: Replace or update a saved payment method
+ *     tags: [Payment Methods]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: methodId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Payment method updated
  *   delete:
  *     summary: Delete a saved payment method
  *     tags: [Payment Methods]

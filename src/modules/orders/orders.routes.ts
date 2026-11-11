@@ -53,6 +53,24 @@ const orderAuth = [requireAuth, requireRole("customer", "tailor", "admin")];
  *         description: Order created successfully
  */
 ordersRoutes.get("/orders", ...orderAuth, asyncHandler(ordersController.getOrders));
+/**
+ * @swagger
+ * /orders/my:
+ *   get:
+ *     summary: List orders for currently authenticated user or tailor (alias of /orders)
+ *     tags: [Orders]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Paginated orders list
+ */
 ordersRoutes.get("/orders/my", ...orderAuth, asyncHandler(ordersController.getOrders));
 ordersRoutes.post("/orders", requireAuth, requireRole("customer", "admin"), validate(createOrderSchema), asyncHandler(ordersController.createOrder));
 
@@ -73,6 +91,22 @@ ordersRoutes.post("/orders", requireAuth, requireRole("customer", "admin"), vali
  *         description: Order details
  */
 ordersRoutes.get("/orders/:orderId", ...orderAuth, asyncHandler(ordersController.getOrderById));
+/**
+ * @swagger
+ * /orders/{orderId}/parties:
+ *   get:
+ *     summary: Get customer and tailor participant details for an order
+ *     tags: [Orders]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Order participant details retrieved
+ */
 ordersRoutes.get("/orders/:orderId/parties", ...orderAuth, asyncHandler(ordersController.getOrderParties));
 
 /**

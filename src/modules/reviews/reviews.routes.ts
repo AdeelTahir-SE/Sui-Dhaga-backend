@@ -30,6 +30,20 @@ reviewsRoutes.get("/orders/:orderId/review", requireAuth, asyncHandler(reviewsCo
 /**
  * @openapi
  * /orders/{orderId}/review:
+ *   get:
+ *     summary: Get the review submitted for a specific order
+ *     tags: [Reviews]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Order review fetched successfully
  *   post:
  *     summary: Leave a review for an order
  *     tags: [Reviews]
@@ -126,6 +140,36 @@ reviewsRoutes.post(
   validate(replyReviewSchema),
   asyncHandler(reviewsController.replyToReview)
 );
+/**
+ * @openapi
+ * /tailors/{tailorId}/reviews/{reviewId}/reply:
+ *   post:
+ *     summary: Tailor replies to a customer review under a specific tailor context
+ *     tags: [Reviews]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: reviewId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reply: { type: string }
+ *               tailorReply: { type: string }
+ *     responses:
+ *       200:
+ *         description: Reply saved successfully
+ */
 reviewsRoutes.post(
   "/tailors/:tailorId/reviews/:reviewId/reply",
   requireAuth,

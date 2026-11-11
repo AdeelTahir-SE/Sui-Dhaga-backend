@@ -24,6 +24,21 @@ export const paymentsRoutes = Router();
  *     responses:
  *       200:
  *         description: Transaction history retrieved successfully
+ * /payments/history:
+ *   get:
+ *     summary: Get paginated payment transaction history (alias of /payments/transactions)
+ *     tags: [Payments]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Transaction history retrieved successfully
  */
 paymentsRoutes.get("/payments/transactions", requireAuth, asyncHandler(paymentsController.getPaymentHistory));
 paymentsRoutes.get("/payments/history", requireAuth, asyncHandler(paymentsController.getPaymentHistory));
@@ -33,6 +48,27 @@ paymentsRoutes.get("/payments/history", requireAuth, asyncHandler(paymentsContro
  * /payments/checkout:
  *   post:
  *     summary: Create checkout session for an order (Stripe, Safepay, JazzCash, EasyPaisa, SadaPay, COD)
+ *     tags: [Payments]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [orderId]
+ *             properties:
+ *               orderId: { type: string, format: uuid }
+ *               amount: { type: number }
+ *               provider: { type: string, enum: [stripe, safepay, jazzcash, easypaisa, sadapay, nayapay, cod] }
+ *               currency: { type: string, default: "PKR" }
+ *               couponCode: { type: string }
+ *     responses:
+ *       201:
+ *         description: Checkout session created successfully
+ * /payments/create-checkout:
+ *   post:
+ *     summary: Create checkout session for an order (alias of /payments/checkout)
  *     tags: [Payments]
  *     security: [{ BearerAuth: [] }]
  *     requestBody:

@@ -61,6 +61,18 @@ const measurementAuth = [requireAuth, requireRole("customer", "tailor", "admin")
  *         description: Measurement profile created successfully
  */
 measurementsRoutes.get("/measurements", ...measurementAuth, asyncHandler(measurementsController.getMeasurements));
+/**
+ * @openapi
+ * /measurements/my:
+ *   get:
+ *     summary: List measurement profiles for currently authenticated user (alias of /measurements)
+ *     tags: [Measurements]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of measurements retrieved successfully
+ */
 measurementsRoutes.get("/measurements/my", ...measurementAuth, asyncHandler(measurementsController.getMeasurements));
 measurementsRoutes.post("/measurements", requireAuth, requireRole("customer", "admin"), validate(createMeasurementSchema), asyncHandler(measurementsController.createMeasurement));
 
@@ -141,6 +153,24 @@ measurementsRoutes.post("/measurements", requireAuth, requireRole("customer", "a
  *         description: Measurement profile deleted successfully
  */
 measurementsRoutes.get("/measurements/:measurementId", ...measurementAuth, asyncHandler(measurementsController.getMeasurementById));
+/**
+ * @openapi
+ * /measurements/{measurementId}:
+ *   put:
+ *     summary: Replace or update measurement profile
+ *     tags: [Measurements]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: measurementId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Measurement profile updated successfully
+ */
 measurementsRoutes.put("/measurements/:measurementId", ...measurementAuth, validate(updateMeasurementSchema), asyncHandler(measurementsController.updateMeasurement));
 measurementsRoutes.patch("/measurements/:measurementId", ...measurementAuth, validate(updateMeasurementSchema), asyncHandler(measurementsController.updateMeasurement));
 measurementsRoutes.delete("/measurements/:measurementId", ...measurementAuth, asyncHandler(measurementsController.deleteMeasurement));

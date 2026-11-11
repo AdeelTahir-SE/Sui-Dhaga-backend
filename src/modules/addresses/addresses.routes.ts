@@ -66,6 +66,18 @@ export const addressesRoutes = Router();
  *     responses:
  *       200:
  *         description: Address updated
+ *   put:
+ *     summary: Replace or update a shipping address
+ *     tags: [Addresses]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: addressId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Address updated
  *   delete:
  *     summary: Delete a shipping address
  *     tags: [Addresses]

@@ -52,6 +52,56 @@ export const wishlistRoutes = Router();
  *     responses:
  *       200:
  *         description: Removed from wishlist
+ * /wishlist/tailors/{tailorId}:
+ *   post:
+ *     summary: Add a tailor to user's wishlist
+ *     tags: [Wishlist]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       201:
+ *         description: Tailor added to wishlist
+ *   delete:
+ *     summary: Remove a tailor from user's wishlist
+ *     tags: [Wishlist]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Tailor removed from wishlist
+ * /wishlist/designs/{designId}:
+ *   post:
+ *     summary: Add a design to user's wishlist
+ *     tags: [Wishlist]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: designId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       201:
+ *         description: Design added to wishlist
+ *   delete:
+ *     summary: Remove a design from user's wishlist
+ *     tags: [Wishlist]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: designId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Design removed from wishlist
  */
 wishlistRoutes.get("/wishlist", requireAuth, asyncHandler(wishlistController.getWishlist));
 wishlistRoutes.post(

@@ -125,6 +125,35 @@ adminRoutes.patch(
   asyncHandler(adminController.updateUser)
 );
 adminRoutes.delete("/admin/users/:userId", ...adminAuth, asyncHandler(adminController.deleteUser));
+/**
+ * @openapi
+ * /admin/users/{userId}/block:
+ *   patch:
+ *     summary: Block a user account (admin only)
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: User blocked successfully
+ * /admin/users/{userId}/unblock:
+ *   patch:
+ *     summary: Unblock a user account (admin only)
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: User unblocked successfully
+ */
 adminRoutes.patch("/admin/users/:userId/block", ...adminAuth, asyncHandler(adminController.blockUser));
 adminRoutes.patch("/admin/users/:userId/unblock", ...adminAuth, asyncHandler(adminController.unblockUser));
 
@@ -172,6 +201,35 @@ adminRoutes.patch(
   validate(adminUpdateTailorSchema),
   asyncHandler(adminController.updateTailor)
 );
+/**
+ * @openapi
+ * /admin/tailors/{tailorId}/verify:
+ *   patch:
+ *     summary: Verify/approve a tailor application (admin only)
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Tailor verified successfully
+ * /admin/tailors/{tailorId}/reject:
+ *   patch:
+ *     summary: Reject a tailor application (admin only)
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Tailor application rejected
+ */
 adminRoutes.patch("/admin/tailors/:tailorId/verify", ...adminAuth, asyncHandler(adminController.verifyTailor));
 adminRoutes.patch("/admin/tailors/:tailorId/reject", ...adminAuth, asyncHandler(adminController.rejectTailor));
 
@@ -242,6 +300,18 @@ adminRoutes.patch(
  * /admin/payments/payouts/{id}:
  *   post:
  *     summary: Approve or reject a tailor payout request (admin only)
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Payout processed
+ *   patch:
+ *     summary: Update tailor payout request status (admin only)
  *     tags: [Admin]
  *     security: [{ BearerAuth: [] }]
  *     parameters:
@@ -371,6 +441,33 @@ adminRoutes.post(
   validate(resolveDisputeSchema),
   asyncHandler(adminController.resolveDispute)
 );
+/**
+ * @openapi
+ * /orders/{orderId}/dispute:
+ *   post:
+ *     summary: Raise an order dispute (authenticated customer or tailor)
+ *     tags: [Orders]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason]
+ *             properties:
+ *               reason: { type: string }
+ *               description: { type: string }
+ *               evidenceUrls: { type: array, items: { type: string, format: uri } }
+ *     responses:
+ *       201:
+ *         description: Dispute submitted successfully
+ */
 adminRoutes.post(
   "/orders/:orderId/dispute",
   requireAuth,
@@ -389,5 +486,36 @@ adminRoutes.get("/admin/cms", ...adminAuth, asyncHandler(adminController.getCmsC
 adminRoutes.put("/admin/cms", ...adminAuth, asyncHandler(adminController.updateCmsContent));
 adminRoutes.get("/admin/settings", ...adminAuth, asyncHandler(adminController.getPlatformSettings));
 adminRoutes.put("/admin/settings", ...adminAuth, asyncHandler(adminController.updatePlatformSettings));
+/**
+ * @openapi
+ * /admin/reports:
+ *   get:
+ *     summary: List user abuse/content reports for moderation (admin only)
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Admin reports fetched successfully
+ * /admin/community/posts/{postId}:
+ *   delete:
+ *     summary: Delete a community post as admin (admin only)
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: postId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Community post deleted by admin
+ */
 adminRoutes.get("/admin/reports", ...adminAuth, asyncHandler(adminController.getReports));
 adminRoutes.delete("/admin/community/posts/:postId", ...adminAuth, asyncHandler(adminController.deleteCommunityPost));

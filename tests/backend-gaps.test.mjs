@@ -83,18 +83,25 @@ function collectExpressRoutes(router, prefix = "") {
   if (!router?.stack) return routes;
   for (const layer of router.stack) {
     if (layer.route) {
-      const path = prefix + layer.route.path;
-      for (const method of Object.keys(layer.route.methods)) {
-        if (layer.route.methods[method]) {
-          routes.push(`${method.toUpperCase()} ${path}`);
+      const routePaths = Array.isArray(layer.route.path) ? layer.route.path : [layer.route.path];
+      for (const routePath of routePaths) {
+        const path = prefix + routePath;
+        for (const method of Object.keys(layer.route.methods)) {
+          if (layer.route.methods[method]) {
+            routes.push(`${method.toUpperCase()} ${path}`);
+          }
         }
       }
     } else if (layer.name === "router" && layer.handle?.stack) {
       let subPrefix = "";
       if (layer.regexp) {
         const src = layer.regexp.source;
-        const m = src.match(/^\\\/\^?([^\\(]+)/) || src.match(/^\^\\\/([a-zA-Z0-9_-]+)/);
-        if (m) subPrefix = "/" + m[1].replace(/\\\//g, "/").replace(/\?/g, "");
+        if (src.includes("api\\/v1")) {
+          subPrefix = "/api/v1";
+        } else {
+          const m = src.match(/^\\\/\^?([^\\(]+)/) || src.match(/^\^\\\/([a-zA-Z0-9_-]+)/);
+          if (m) subPrefix = "/" + m[1].replace(/\\\//g, "/").replace(/\?/g, "");
+        }
       }
       routes.push(...collectExpressRoutes(layer.handle, prefix + subPrefix));
     }
@@ -304,7 +311,38 @@ describe("Sui-Dhaga Backend Gaps Fulfillment Suite", () => {
 
       const swaggerRes = await invokeApp("GET", "/api-docs/swagger.json");
       assert.equal(swaggerRes.status, 200);
-      assert.ok(Object.keys(swaggerRes.body.paths).length >= 120);
+      assert.ok(Object.keys(swaggerRes.body.paths).length >= 157);
+
+      const normalizeEndpoint = (method, p) =>
+        `${method.toUpperCase()} ${p
+          .replace(/^\/api\/v1/, "")
+          .replace(/\/\*$/, "/{param}")
+          .replace(/:([A-Za-z0-9_]+)/g, "{param}")
+          .replace(/\{[^}]+\}/g, "{param}")
+          .replace(/\/$/, "")}`;
+
+      const mountedApiOps = new Set(
+        collectExpressRoutes(app._router)
+          .filter((entry) => entry.includes(" /api/v1/"))
+          .map((entry) => {
+            const [m, p] = entry.split(" ");
+            return normalizeEndpoint(m, p);
+          })
+      );
+
+      const swaggerOps = new Set();
+      for (const [p, ops] of Object.entries(swaggerRes.body.paths)) {
+        for (const m of Object.keys(ops)) {
+          if (["get", "post", "put", "patch", "delete"].includes(m.toLowerCase())) {
+            swaggerOps.add(normalizeEndpoint(m, p));
+          }
+        }
+      }
+
+      const missingFromSwagger = [...mountedApiOps].filter((op) => !swaggerOps.has(op));
+      const extraInSwagger = [...swaggerOps].filter((op) => !mountedApiOps.has(op));
+      assert.deepEqual(missingFromSwagger, []);
+      assert.deepEqual(extraInSwagger, []);
     });
 
     it("distinguishes missing-table errors from missing-column errors", () => {

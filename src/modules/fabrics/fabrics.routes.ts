@@ -46,6 +46,44 @@ export const fabricsRoutes = Router();
  *     responses:
  *       200:
  *         description: Fabric details fetched
+ *   patch:
+ *     summary: Update a fabric entry by ID or slug (Admin only)
+ *     tags: [Fabrics]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: fabricId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string }
+ *               category: { type: string }
+ *               pricePerMeter: { type: number }
+ *               gsmWeight: { type: integer }
+ *               season: { type: string }
+ *               description: { type: string }
+ *               inStock: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Fabric updated
+ *   delete:
+ *     summary: Delete a fabric entry by ID or slug (Admin only)
+ *     tags: [Fabrics]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: fabricId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Fabric deleted
  */
 fabricsRoutes.get("/fabrics", asyncHandler(fabricsController.listFabrics));
 fabricsRoutes.get("/fabrics/:fabricId", asyncHandler(fabricsController.getFabricById));
