@@ -5,6 +5,7 @@ export const createCommunityPostSchema = z.object({
   content: z.string().optional(),
   caption: z.string().optional(),
   category: z.string().optional(),
+  visibility: z.enum(["public", "followers", "private"]).optional(),
   images: z.union([z.array(z.string()), z.string()]).optional(),
   tags: z.union([z.array(z.string()), z.string()]).optional(),
 });

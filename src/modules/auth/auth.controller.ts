@@ -71,4 +71,9 @@ export const googleCallback: RequestHandler = (req, res) => {
   res.send(html);
 };
 
+export const changePassword: RequestHandler = async (req, res) => {
+  const message = await authService.changePassword(req.user!.id, req.body);
+  success(res, null, message);
+};
+
 

@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import { getDbClient } from "../../utils/resource-helper.js";
 import { AppError } from "../../utils/app-error.js";
 import { env } from "../../config/env.js";
@@ -692,6 +693,59 @@ export const authService = {
   </script>
 </body>
 </html>`;
+  },
+
+  async changePassword(userId: string, payload: Record<string, unknown>) {
+    if (!userId) throw new AppError("Authentication required", 401);
+    const currentPassword = String(
+      payload.currentPassword || payload.current_password || payload.oldPassword || ""
+    );
+    const newPassword = String(
+      payload.newPassword || payload.new_password || payload.password || ""
+    );
+
+    if (!currentPassword || !newPassword) {
+      throw new AppError("Both currentPassword and newPassword are required", 400);
+    }
+    if (newPassword.length < 8) {
+      throw new AppError("New password must be at least 8 characters", 400);
+    }
+
+    const client = getDbClient();
+    const { data: userLookup, error: lookupError } = await client.auth.admin.getUserById(userId);
+    if (lookupError || !userLookup?.user?.email) {
+      throw new AppError("User account email could not be verified", 404);
+    }
+
+    // Verify current password using an isolated Supabase auth client to avoid mutating the service-role singleton
+    const supabaseKey = env.SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!env.SUPABASE_URL || !supabaseKey) {
+      throw new AppError("Supabase auth configuration is missing", 500);
+    }
+
+    const verifyClient = createClient(
+      env.SUPABASE_URL,
+      supabaseKey,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    );
+
+    const { error: signInError } = await verifyClient.auth.signInWithPassword({
+      email: userLookup.user.email,
+      password: currentPassword,
+    });
+
+    if (signInError) {
+      throw new AppError("Current password is incorrect", 400);
+    }
+
+    const { error: updateError } = await client.auth.admin.updateUserById(userId, {
+      password: newPassword,
+    });
+    if (updateError) {
+      throw new AppError(updateError.message, 400);
+    }
+
+    return "Password changed successfully";
   },
 };
 

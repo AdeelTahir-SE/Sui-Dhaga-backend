@@ -9,9 +9,13 @@ import {
   createTailorSchema,
   updateTailorSchema,
   uploadTailorBannerSchema,
+  addGalleryImageSchema,
   tailorServiceSchema,
   tailorAvailabilitySchema,
   tailorAvailabilitySlotSchema,
+  blockedDatesSchema,
+  payoutSettingsSchema,
+  payoutRequestSchema,
 } from "./tailors.validator.js";
 
 export const tailorsRoutes = Router();
@@ -132,7 +136,77 @@ tailorsRoutes.get("/tailors/map", asyncHandler(tailorsController.getTailorsMap))
  *       200:
  *         description: Tailor profile updated
  */
+/**
+ * @swagger
+ * /tailors/payouts:
+ *   get:
+ *     summary: Get tailor earnings summary, available balance, and payout history
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Tailor payouts and balance summary
+ *   post:
+ *     summary: Request a payout withdrawal for available tailor earnings
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [amount]
+ *             properties:
+ *               amount: { type: number, example: 15000 }
+ *               provider: { type: string, enum: [bank_transfer, jazzcash, easypaisa, sadapay, nayapay, stripe] }
+ *               accountTitle: { type: string }
+ *               accountNumber: { type: string }
+ *               bankName: { type: string }
+ *               notes: { type: string }
+ *     responses:
+ *       201:
+ *         description: Payout request submitted
+ * /tailors/payout-settings:
+ *   get:
+ *     summary: Get saved payout bank/wallet settings for authenticated tailor
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Payout settings retrieved
+ *   put:
+ *     summary: Save or update payout bank/wallet settings for authenticated tailor
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               provider: { type: string, enum: [bank_transfer, jazzcash, easypaisa, sadapay, nayapay, stripe] }
+ *               accountTitle: { type: string }
+ *               accountNumber: { type: string }
+ *               bankName: { type: string }
+ *               iban: { type: string }
+ *               walletPhone: { type: string }
+ *               autoPayout: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Payout settings saved
+ */
 tailorsRoutes.get("/tailors/me", requireAuth, asyncHandler(tailorsController.getMyTailorProfile));
+tailorsRoutes.get("/tailors/earnings", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.getPayouts));
+tailorsRoutes.get("/tailors/payouts", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.getPayouts));
+tailorsRoutes.post("/tailors/payouts", requireAuth, requireRole("tailor", "admin"), validate(payoutRequestSchema), asyncHandler(tailorsController.requestPayout));
+tailorsRoutes.get("/tailors/payout-settings", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.getPayoutSettings));
+tailorsRoutes.put("/tailors/payout-settings", requireAuth, requireRole("tailor", "admin"), validate(payoutSettingsSchema), asyncHandler(tailorsController.upsertPayoutSettings));
+tailorsRoutes.patch("/tailors/payout-settings", requireAuth, requireRole("tailor", "admin"), validate(payoutSettingsSchema), asyncHandler(tailorsController.upsertPayoutSettings));
+tailorsRoutes.get("/tailors/payouts/settings", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.getPayoutSettings));
+tailorsRoutes.put("/tailors/payouts/settings", requireAuth, requireRole("tailor", "admin"), validate(payoutSettingsSchema), asyncHandler(tailorsController.upsertPayoutSettings));
+tailorsRoutes.patch("/tailors/payouts/settings", requireAuth, requireRole("tailor", "admin"), validate(payoutSettingsSchema), asyncHandler(tailorsController.upsertPayoutSettings));
 tailorsRoutes.get("/tailors/:tailorId", asyncHandler(tailorsController.getTailorById));
 tailorsRoutes.patch("/tailors/:tailorId", requireAuth, requireRole("tailor", "admin"), validate(updateTailorSchema), asyncHandler(tailorsController.updateTailor));
 
@@ -176,6 +250,54 @@ tailorsRoutes.patch("/tailors/:tailorId", requireAuth, requireRole("tailor", "ad
  *       201:
  *         description: Service created
  */
+/**
+ * @swagger
+ * /tailors/{tailorId}/services/{serviceId}:
+ *   patch:
+ *     summary: Update a tailor service
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: serviceId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title: { type: string }
+ *               price: { type: number }
+ *               description: { type: string }
+ *               category: { type: string }
+ *               isActive: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Service updated
+ *   delete:
+ *     summary: Delete a tailor service
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: serviceId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Service deleted
+ */
 tailorsRoutes.get("/tailors/:tailorId/services", asyncHandler(tailorsController.getTailorServices));
 tailorsRoutes.post("/tailors/:tailorId/services", requireAuth, requireRole("tailor", "admin"), validate(tailorServiceSchema), asyncHandler(tailorsController.addTailorService));
 tailorsRoutes.put("/tailors/services/:serviceId", requireAuth, requireRole("tailor", "admin"), validate(tailorServiceSchema.partial()), asyncHandler(tailorsController.updateTailorService));
@@ -184,6 +306,49 @@ tailorsRoutes.delete("/tailors/services/:serviceId", requireAuth, requireRole("t
 tailorsRoutes.put("/tailors/:tailorId/services/:serviceId", requireAuth, requireRole("tailor", "admin"), validate(tailorServiceSchema.partial()), asyncHandler(tailorsController.updateTailorService));
 tailorsRoutes.patch("/tailors/:tailorId/services/:serviceId", requireAuth, requireRole("tailor", "admin"), validate(tailorServiceSchema.partial()), asyncHandler(tailorsController.updateTailorService));
 tailorsRoutes.delete("/tailors/:tailorId/services/:serviceId", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.deleteTailorService));
+
+/**
+ * @swagger
+ * /tailors/{tailorId}/availability/blocked-dates:
+ *   get:
+ *     summary: Get blocked calendar dates for a tailor
+ *     tags: [Tailors]
+ *     security: []
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Blocked dates list
+ *   put:
+ *     summary: Replace blocked calendar dates for a tailor
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               blockedDates:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   example: "2026-12-25"
+ *     responses:
+ *       200:
+ *         description: Blocked dates updated
+ */
+tailorsRoutes.get("/tailors/:tailorId/availability/blocked-dates", asyncHandler(tailorsController.getBlockedDates));
+tailorsRoutes.put("/tailors/:tailorId/availability/blocked-dates", requireAuth, requireRole("tailor", "admin"), validate(blockedDatesSchema), asyncHandler(tailorsController.setBlockedDates));
 
 /**
  * @swagger
@@ -312,4 +477,95 @@ tailorsRoutes.get("/tailors/:tailorId/reviews", asyncHandler(tailorsController.g
  *         description: Shop banner updated successfully
  */
 tailorsRoutes.post("/tailors/:tailorId/banner", requireAuth, requireRole("tailor", "admin"), uploadSingleImage("banner"), validate(uploadTailorBannerSchema), asyncHandler(tailorsController.uploadTailorBanner));
+
+/**
+ * @swagger
+ * /tailors/{tailorId}/gallery:
+ *   get:
+ *     summary: Get tailor portfolio gallery images
+ *     tags: [Tailors]
+ *     security: []
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Tailor gallery images
+ *   post:
+ *     summary: Add an image to tailor portfolio gallery
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image: { type: string, format: binary }
+ *               caption: { type: string }
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               imageUrl: { type: string, format: uri }
+ *               caption: { type: string }
+ *     responses:
+ *       201:
+ *         description: Gallery image added
+ *   delete:
+ *     summary: Delete an image from tailor portfolio gallery by imageId or imageUrl
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: imageId
+ *         schema: { type: string }
+ *       - in: query
+ *         name: imageUrl
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               imageId: { type: string }
+ *               imageUrl: { type: string }
+ *     responses:
+ *       200:
+ *         description: Gallery image deleted
+ * /tailors/{tailorId}/gallery/{imageId}:
+ *   delete:
+ *     summary: Delete a specific gallery image by ID
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: imageId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Gallery image deleted
+ */
+tailorsRoutes.get("/tailors/:tailorId/gallery", asyncHandler(tailorsController.getGallery));
+tailorsRoutes.post("/tailors/:tailorId/gallery", requireAuth, requireRole("tailor", "admin"), uploadSingleImage("image"), validate(addGalleryImageSchema), asyncHandler(tailorsController.addGalleryImage));
+tailorsRoutes.delete("/tailors/:tailorId/gallery", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.deleteGalleryImage));
+tailorsRoutes.delete("/tailors/:tailorId/gallery/:imageId", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.deleteGalleryImage));
+
 

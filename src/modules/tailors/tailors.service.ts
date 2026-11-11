@@ -7,6 +7,7 @@ import {
 import { storageService } from "../../services/storage.service.js";
 import { cacheService } from "../../services/cache.service.js";
 import { AppError } from "../../utils/app-error.js";
+import { isMissingTableError, throwDbError } from "../../utils/supabase-error.js";
 
 export const CITY_COORDINATES: Record<string, { lat: number; lng: number }> = {
   islamabad: { lat: 33.6844, lng: 73.0479 },
@@ -690,9 +691,9 @@ export const tailorsService = {
     return data ?? [];
   },
 
-  async addTailorService(tailorId: string, _userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
+  async addTailorService(tailorId: string, userId: string | undefined, userRole: string | undefined, data: Record<string, unknown>) {
+    const effectiveTailorId = await this.verifyTailorOwnership(tailorId, userId, userRole);
     const client = getDbClient();
-    const effectiveTailorId = (await this.resolveTailorId(tailorId, _userId)) || tailorId;
     const mapped = toSnakeCase(data);
     const { data: created, error } = await client
       .from("tailor_services")
@@ -708,8 +709,32 @@ export const tailorsService = {
     return created;
   },
 
-  async updateTailorService(serviceId: string, _userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>) {
+  async updateTailorService(
+    serviceId: string,
+    userId: string | undefined,
+    userRole: string | undefined,
+    data: Record<string, unknown>,
+    tailorIdParam?: string
+  ) {
     const client = getDbClient();
+    const { data: existing, error: fetchError } = await client
+      .from("tailor_services")
+      .select("id, tailor_id")
+      .eq("id", serviceId)
+      .maybeSingle();
+
+    if (fetchError) throw new AppError(fetchError.message, 400);
+    if (!existing) throw new AppError("Tailor service not found", 404);
+
+    if (tailorIdParam) {
+      const paramTailorId = await this.verifyTailorOwnership(tailorIdParam, userId, userRole);
+      if (userRole !== "admin" && paramTailorId !== existing.tailor_id) {
+        throw new AppError("Service does not belong to this tailor", 403);
+      }
+    } else {
+      await this.verifyTailorOwnership(existing.tailor_id, userId, userRole);
+    }
+
     const mapped = toSnakeCase(data);
     const { data: updated, error } = await client
       .from("tailor_services")
@@ -719,15 +744,38 @@ export const tailorsService = {
       .single();
 
     if (error) throw new AppError(error.message, 400);
-    this.invalidateTailorCache();
+    this.invalidateTailorCache(existing.tailor_id);
     return updated;
   },
 
-  async deleteTailorService(serviceId: string, _userId: string | undefined, _userRole: string | undefined) {
+  async deleteTailorService(
+    serviceId: string,
+    userId: string | undefined,
+    userRole: string | undefined,
+    tailorIdParam?: string
+  ) {
     const client = getDbClient();
+    const { data: existing, error: fetchError } = await client
+      .from("tailor_services")
+      .select("id, tailor_id")
+      .eq("id", serviceId)
+      .maybeSingle();
+
+    if (fetchError) throw new AppError(fetchError.message, 400);
+    if (!existing) throw new AppError("Tailor service not found", 404);
+
+    if (tailorIdParam) {
+      const paramTailorId = await this.verifyTailorOwnership(tailorIdParam, userId, userRole);
+      if (userRole !== "admin" && paramTailorId !== existing.tailor_id) {
+        throw new AppError("Service does not belong to this tailor", 403);
+      }
+    } else {
+      await this.verifyTailorOwnership(existing.tailor_id, userId, userRole);
+    }
+
     const { error } = await client.from("tailor_services").delete().eq("id", serviceId);
     if (error) throw new AppError(error.message, 400);
-    this.invalidateTailorCache();
+    this.invalidateTailorCache(existing.tailor_id);
     return true;
   },
 
@@ -769,6 +817,38 @@ export const tailorsService = {
     }
 
     return null;
+  },
+
+  /**
+   * Resolves a tailorId (or `"me"`) and asserts that the caller owns the tailor profile or is an admin.
+   */
+  async verifyTailorOwnership(
+    tailorIdOrMe: string,
+    userId: string | undefined,
+    userRole: string | undefined
+  ): Promise<string> {
+    if (!userId) throw new AppError("Authentication required", 401);
+    const lookupId = tailorIdOrMe === "me" ? "" : tailorIdOrMe;
+    const effectiveTailorId = (await this.resolveTailorId(lookupId, userId)) || lookupId;
+    if (!effectiveTailorId) {
+      throw new AppError("Tailor profile not found", 404);
+    }
+
+    const client = getDbClient();
+    const { data: tailor, error } = await client
+      .from("tailors")
+      .select("id, user_id")
+      .eq("id", effectiveTailorId)
+      .maybeSingle();
+
+    if (error) throw new AppError(error.message, 400);
+    if (!tailor) throw new AppError("Tailor profile not found", 404);
+
+    if (userRole !== "admin" && tailor.user_id !== userId) {
+      throw new AppError("You do not have permission to modify this tailor resource", 403);
+    }
+
+    return tailor.id;
   },
 
   async getTailorAvailability(tailorId: string, userId?: string) {
@@ -955,12 +1035,13 @@ export const tailorsService = {
     return updated;
   },
 
-  async addGalleryImage(tailorId: string, _userId: string | undefined, _userRole: string | undefined, file?: Express.Multer.File, data: Record<string, unknown> = {}) {
+  async addGalleryImage(tailorId: string, userId: string | undefined, userRole: string | undefined, file?: Express.Multer.File, data: Record<string, unknown> = {}) {
+    const effectiveTailorId = await this.verifyTailorOwnership(tailorId, userId, userRole);
     let imageUrl = (data.imageUrl || data.image) as string;
     if (file) {
       const fileExt = file.originalname?.split(".").pop() || "png";
       const cleanExt = fileExt.replace(/[^a-zA-Z0-9]/g, "");
-      const path = `${tailorId}/gallery-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
+      const path = `${effectiveTailorId}/gallery-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${cleanExt || "png"}`;
       const { url } = await storageService.uploadFile("tailor-gallery", path, file.buffer, file.mimetype);
       imageUrl = url;
     }
@@ -973,7 +1054,7 @@ export const tailorsService = {
     const { data: created, error } = await client
       .from("tailor_gallery")
       .insert({
-        tailor_id: tailorId,
+        tailor_id: effectiveTailorId,
         image_url: imageUrl,
         caption: data.caption || "",
       })
@@ -981,22 +1062,80 @@ export const tailorsService = {
       .single();
 
     if (error) {
-      // Fallback: update tailor's portfolio/gallery column directly if tailor_gallery table is not used
-      const { data: tailor, error: tailorError } = await client
-        .from("tailors")
-        .update({
-          portfolio: [{ id: `img-${Date.now()}`, url: imageUrl, caption: data.caption || "" }],
-        })
-        .eq("id", tailorId)
-        .select()
-        .single();
-      if (tailorError) throw new AppError(error.message, 400);
-      this.invalidateTailorCache(tailorId);
-      return tailor;
+      throw new AppError(error.message, 400);
     }
 
-    this.invalidateTailorCache(tailorId);
+    this.invalidateTailorCache(effectiveTailorId);
+    if (tailorId !== effectiveTailorId) {
+      this.invalidateTailorCache(tailorId);
+    }
     return created;
+  },
+
+  async getGallery(tailorId: string) {
+    const effectiveTailorId = (await this.resolveTailorId(tailorId)) || tailorId;
+    const client = getDbClient();
+    const { data, error } = await client
+      .from("tailor_gallery")
+      .select("id, tailor_id, image_url, caption, display_order, created_at")
+      .eq("tailor_id", effectiveTailorId)
+      .order("display_order", { ascending: true })
+      .order("created_at", { ascending: false });
+
+    if (error) throw new AppError(error.message, 400);
+    return data ?? [];
+  },
+
+  async deleteGalleryImage(
+    tailorId: string,
+    userId: string | undefined,
+    userRole: string | undefined,
+    opts: { imageId?: string; imageUrl?: string }
+  ) {
+    const effectiveTailorId = await this.verifyTailorOwnership(tailorId, userId, userRole);
+    const { imageId, imageUrl } = opts;
+    if (!imageId && !imageUrl) {
+      throw new AppError("imageId or imageUrl is required", 400);
+    }
+
+    const client = getDbClient();
+    let findQuery = client
+      .from("tailor_gallery")
+      .select("id, image_url")
+      .eq("tailor_id", effectiveTailorId);
+
+    if (imageId) {
+      findQuery = findQuery.eq("id", imageId);
+    } else if (imageUrl) {
+      findQuery = findQuery.eq("image_url", imageUrl);
+    }
+
+    const { data: existing, error: findError } = await findQuery.maybeSingle();
+    if (findError) throw new AppError(findError.message, 400);
+    if (!existing) throw new AppError("Gallery image not found", 404);
+
+    const { error: deleteError } = await client
+      .from("tailor_gallery")
+      .delete()
+      .eq("id", existing.id)
+      .eq("tailor_id", effectiveTailorId);
+
+    if (deleteError) throw new AppError(deleteError.message, 400);
+
+    // Best-effort remove object from Supabase Storage if it resides in tailor-gallery bucket
+    const marker = "/storage/v1/object/public/tailor-gallery/";
+    if (existing.image_url && existing.image_url.includes(marker)) {
+      const storagePath = decodeURIComponent(existing.image_url.split(marker)[1] || "");
+      if (storagePath) {
+        await storageService.deleteFile("tailor-gallery", storagePath).catch(() => {});
+      }
+    }
+
+    this.invalidateTailorCache(effectiveTailorId);
+    if (tailorId !== effectiveTailorId) {
+      this.invalidateTailorCache(tailorId);
+    }
+    return { id: existing.id, deleted: true };
   },
 
   async requestVerification(tailorId: string, _userId: string | undefined, _userRole: string | undefined, file?: Express.Multer.File, data: Record<string, unknown> = {}) {
@@ -1073,6 +1212,276 @@ export const tailorsService = {
     const { error } = await client.from("tailor_availability").delete().eq("id", slotId);
     if (error) throw new AppError(error.message, 400);
     return true;
+  },
+
+  async getBlockedDates(tailorId: string, userId?: string) {
+    const effectiveTailorId = (await this.resolveTailorId(tailorId, userId)) || tailorId;
+    const client = getDbClient();
+    const { data, error } = await client
+      .from("tailor_blocked_dates")
+      .select("id, tailor_id, blocked_date, reason, created_at")
+      .eq("tailor_id", effectiveTailorId)
+      .order("blocked_date", { ascending: true });
+
+    if (error) {
+      if (isMissingTableError(error)) {
+        return { tailorId: effectiveTailorId, blockedDates: [], dates: [] };
+      }
+      throwDbError(error, "tailor_blocked_dates");
+    }
+
+    const rows = data ?? [];
+    return {
+      tailorId: effectiveTailorId,
+      blockedDates: rows.map((row: any) => row.blocked_date),
+      dates: rows,
+    };
+  },
+
+  async setBlockedDates(
+    tailorId: string,
+    userId: string | undefined,
+    userRole: string | undefined,
+    payload: Record<string, unknown>
+  ) {
+    const effectiveTailorId = await this.verifyTailorOwnership(tailorId, userId, userRole);
+    const rawEntries = Array.isArray(payload.blockedDates)
+      ? payload.blockedDates
+      : Array.isArray(payload.dates)
+        ? payload.dates
+        : payload.date
+          ? [{ date: payload.date, reason: payload.reason }]
+          : [];
+
+    const deduped = new Map<string, string | null>();
+    for (const item of rawEntries) {
+      if (typeof item === "string") {
+        deduped.set(item, null);
+      } else if (item && typeof item === "object" && typeof (item as any).date === "string") {
+        deduped.set((item as any).date, typeof (item as any).reason === "string" ? (item as any).reason : null);
+      }
+    }
+
+    const client = getDbClient();
+    const { error: deleteError } = await client
+      .from("tailor_blocked_dates")
+      .delete()
+      .eq("tailor_id", effectiveTailorId);
+
+    if (deleteError) {
+      throwDbError(deleteError, "tailor_blocked_dates");
+    }
+
+    const rowsToInsert = Array.from(deduped.entries()).map(([blocked_date, reason]) => ({
+      tailor_id: effectiveTailorId,
+      blocked_date,
+      reason,
+    }));
+
+    let inserted: any[] = [];
+    if (rowsToInsert.length > 0) {
+      const { data, error: insertError } = await client
+        .from("tailor_blocked_dates")
+        .insert(rowsToInsert)
+        .select("id, tailor_id, blocked_date, reason, created_at")
+        .order("blocked_date", { ascending: true });
+
+      if (insertError) {
+        throwDbError(insertError, "tailor_blocked_dates");
+      }
+      inserted = data ?? [];
+    }
+
+    this.invalidateTailorCache(effectiveTailorId);
+    return {
+      tailorId: effectiveTailorId,
+      blockedDates: inserted.map((r) => r.blocked_date),
+      dates: inserted,
+    };
+  },
+
+  async computeTailorBalance(effectiveTailorId: string) {
+    const client = getDbClient();
+    const [{ data: orders, error: ordersError }, { data: payouts, error: payoutsError }] =
+      await Promise.all([
+        client
+          .from("orders")
+          .select("id, total_amount, status, payment_status, created_at")
+          .eq("tailor_id", effectiveTailorId),
+        client
+          .from("tailor_payouts")
+          .select("id, tailor_id, amount, currency, status, provider, account_title, account_number, bank_name, reference, notes, admin_notes, requested_at, processed_at, created_at")
+          .eq("tailor_id", effectiveTailorId)
+          .order("created_at", { ascending: false }),
+      ]);
+
+    if (ordersError) throw new AppError(ordersError.message, 400);
+    if (payoutsError && !isMissingTableError(payoutsError)) {
+      throwDbError(payoutsError, "tailor_payouts");
+    }
+
+    const eligibleStatuses = new Set(["completed", "delivered", "ready_for_pickup"]);
+    const earnedOrders = (orders ?? []).filter(
+      (o: any) => eligibleStatuses.has(String(o.status || "")) || o.payment_status === "paid"
+    );
+
+    const grossEarnings = earnedOrders.reduce((sum: number, o: any) => sum + Number(o.total_amount || 0), 0);
+    const platformFeeRate = 0.1;
+    const platformFee = Number((grossEarnings * platformFeeRate).toFixed(2));
+    const netEarnings = Number((grossEarnings - platformFee).toFixed(2));
+
+    const payoutRows = payoutsError ? [] : payouts ?? [];
+    const paidOut = payoutRows
+      .filter((p: any) => p.status === "paid" || p.status === "completed")
+      .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+    const pendingPayouts = payoutRows
+      .filter((p: any) => p.status === "pending" || p.status === "processing")
+      .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+
+    const availableBalance = Math.max(0, Number((netEarnings - paidOut - pendingPayouts).toFixed(2)));
+
+    return {
+      summary: {
+        grossEarnings,
+        platformFeeRate,
+        platformFee,
+        netEarnings,
+        paidOut,
+        pendingPayouts,
+        availableBalance,
+        currency: "PKR",
+        completedOrdersCount: earnedOrders.length,
+      },
+      payouts: payoutRows,
+    };
+  },
+
+  async getPayoutSettings(userId: string | undefined, userRole: string | undefined, tailorIdParam = "me") {
+    const effectiveTailorId = await this.verifyTailorOwnership(tailorIdParam, userId, userRole);
+    const client = getDbClient();
+    const { data, error } = await client
+      .from("tailor_payout_settings")
+      .select("*")
+      .eq("tailor_id", effectiveTailorId)
+      .maybeSingle();
+
+    if (error) {
+      if (isMissingTableError(error)) {
+        return {
+          tailorId: effectiveTailorId,
+          provider: "bank_transfer",
+          autoPayout: false,
+          isConfigured: false,
+        };
+      }
+      throwDbError(error, "tailor_payout_settings");
+    }
+
+    return data ?? {
+      tailorId: effectiveTailorId,
+      provider: "bank_transfer",
+      autoPayout: false,
+      isConfigured: false,
+    };
+  },
+
+  async upsertPayoutSettings(
+    userId: string | undefined,
+    userRole: string | undefined,
+    data: Record<string, unknown>,
+    tailorIdParam = "me"
+  ) {
+    const effectiveTailorId = await this.verifyTailorOwnership(tailorIdParam, userId, userRole);
+    const mapped = toSnakeCase(data);
+    const payload = {
+      tailor_id: effectiveTailorId,
+      provider: (mapped.provider as string) || "bank_transfer",
+      account_title: mapped.account_title ?? null,
+      account_number: mapped.account_number ?? null,
+      bank_name: mapped.bank_name ?? null,
+      iban: mapped.iban ?? null,
+      branch_code: mapped.branch_code ?? null,
+      wallet_phone: mapped.wallet_phone ?? null,
+      auto_payout: Boolean(mapped.auto_payout ?? false),
+    };
+
+    const client = getDbClient();
+    const { data: saved, error } = await client
+      .from("tailor_payout_settings")
+      .upsert(payload, { onConflict: "tailor_id" })
+      .select()
+      .single();
+
+    if (error) {
+      throwDbError(error, "tailor_payout_settings");
+    }
+    return saved;
+  },
+
+  async getPayoutsSummary(userId: string | undefined, userRole: string | undefined, tailorIdParam = "me") {
+    const effectiveTailorId = await this.verifyTailorOwnership(tailorIdParam, userId, userRole);
+    const [balanceData, settings] = await Promise.all([
+      this.computeTailorBalance(effectiveTailorId),
+      this.getPayoutSettings(userId, userRole, effectiveTailorId),
+    ]);
+
+    return {
+      tailorId: effectiveTailorId,
+      summary: balanceData.summary,
+      payouts: balanceData.payouts,
+      settings,
+    };
+  },
+
+  async requestPayout(
+    userId: string | undefined,
+    userRole: string | undefined,
+    data: Record<string, unknown>,
+    tailorIdParam = "me"
+  ) {
+    const effectiveTailorId = await this.verifyTailorOwnership(tailorIdParam, userId, userRole);
+    const amount = Number(data.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new AppError("Payout amount must be greater than zero", 400);
+    }
+
+    const { summary } = await this.computeTailorBalance(effectiveTailorId);
+    if (amount > summary.availableBalance) {
+      throw new AppError(
+        `Insufficient available balance. Available balance is PKR ${summary.availableBalance}`,
+        400
+      );
+    }
+
+    const mapped = toSnakeCase(data);
+    const settings = await this.getPayoutSettings(userId, userRole, effectiveTailorId);
+    const client = getDbClient();
+
+    const { data: created, error } = await client
+      .from("tailor_payouts")
+      .insert({
+        tailor_id: effectiveTailorId,
+        amount,
+        currency: "PKR",
+        status: "pending",
+        provider: (mapped.provider as string) || (settings as any)?.provider || "bank_transfer",
+        account_title: (mapped.account_title as string) || (settings as any)?.account_title || null,
+        account_number: (mapped.account_number as string) || (settings as any)?.account_number || null,
+        bank_name: (mapped.bank_name as string) || (settings as any)?.bank_name || null,
+        notes: (mapped.notes as string) || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throwDbError(error, "tailor_payouts");
+    }
+
+    const updated = await this.computeTailorBalance(effectiveTailorId);
+    return {
+      payout: created,
+      summary: updated.summary,
+    };
   },
 };
 

@@ -96,6 +96,21 @@ export const getBlockStatus: RequestHandler = async (req, res) => {
   success(res, result, "Block status fetched successfully");
 };
 
+export const followUser: RequestHandler = async (req, res) => {
+  const result = await usersService.followUser(req.user!.id, asString(req.params.userId));
+  success(res, result, "User followed successfully");
+};
+
+export const unfollowUser: RequestHandler = async (req, res) => {
+  const result = await usersService.unfollowUser(req.user!.id, asString(req.params.userId));
+  success(res, result, "User unfollowed successfully");
+};
+
+export const getFollowStatus: RequestHandler = async (req, res) => {
+  const result = await usersService.getFollowStatus(req.user?.id, asString(req.params.userId));
+  success(res, result, "Follow status fetched successfully");
+};
+
 export const getBlockedUsers: RequestHandler = async (req, res) => {
   const result = await usersService.getBlockedUsers(req.user!.id);
   success(res, result, "Blocked users fetched successfully");

@@ -5,6 +5,7 @@ import {
 } from "../../utils/resource-helper.js";
 import { storageService } from "../../services/storage.service.js";
 import { AppError } from "../../utils/app-error.js";
+import { isMissingColumnError, isMissingTableError } from "../../utils/supabase-error.js";
 
 export interface GetPostsOptions {
   page?: number;
@@ -12,11 +13,112 @@ export interface GetPostsOptions {
   category?: string;
   tag?: string;
   search?: string;
+  tab?: string;
+  visibility?: string;
   userId?: string;
   authorId?: string;
+  authorIds?: string[];
+}
+
+const POST_SELECT_WITH_EXTRAS =
+  "id, user_id, title, content, images, tags, category, visibility, likes_count, saves_count, comments_count, created_at, updated_at, author:profiles!user_id(id, full_name, avatar_url, role)";
+const POST_SELECT_BASE =
+  "id, user_id, title, content, images, tags, category, likes_count, saves_count, created_at, updated_at, author:profiles!user_id(id, full_name, avatar_url, role)";
+
+/**
+ * Attaches user interaction flags (`is_liked`, `is_saved`, `is_following`, `comments_count`) to post rows.
+ */
+async function hydratePosts(
+  posts: any[],
+  client: ReturnType<typeof getDbClient>,
+  userId?: string
+): Promise<any[]> {
+  if (!posts.length) return posts;
+
+  const postIds = posts.map((p) => p.id);
+  const authorIds = Array.from(new Set(posts.map((p) => p.user_id).filter(Boolean)));
+
+  let likedSet = new Set<string>();
+  let savedSet = new Set<string>();
+  let followedSet = new Set<string>();
+  const commentCounts = new Map<string, number>();
+
+  try {
+    const tasks: Array<PromiseLike<any>> = [
+      client.from("community_comments").select("post_id").in("post_id", postIds),
+    ];
+
+    if (userId) {
+      tasks.push(
+        client.from("community_likes").select("post_id").eq("user_id", userId).in("post_id", postIds),
+        client.from("community_saves").select("post_id").eq("user_id", userId).in("post_id", postIds),
+        authorIds.length
+          ? client
+              .from("user_follows")
+              .select("following_id")
+              .eq("follower_id", userId)
+              .in("following_id", authorIds)
+          : Promise.resolve({ data: [] })
+      );
+    }
+
+    const [commentsRes, likesRes, savesRes, followsRes] = await Promise.all(tasks);
+
+    for (const row of commentsRes?.data ?? []) {
+      commentCounts.set(row.post_id, (commentCounts.get(row.post_id) ?? 0) + 1);
+    }
+    if (likesRes?.data) likedSet = new Set(likesRes.data.map((l: any) => l.post_id));
+    if (savesRes?.data) savedSet = new Set(savesRes.data.map((s: any) => s.post_id));
+    if (followsRes && !isMissingTableError(followsRes.error) && followsRes.data) {
+      followedSet = new Set(followsRes.data.map((f: any) => f.following_id));
+    }
+  } catch {
+    // Graceful fallback if auxiliary interaction queries fail
+  }
+
+  return posts.map((p) => {
+    const isLiked = likedSet.has(p.id);
+    const isSaved = savedSet.has(p.id);
+    const isFollowing = followedSet.has(p.user_id);
+    const resolvedCommentsCount =
+      typeof p.comments_count === "number"
+        ? Math.max(p.comments_count, commentCounts.get(p.id) ?? 0)
+        : commentCounts.get(p.id) ?? 0;
+
+    return {
+      ...p,
+      visibility: p.visibility || "public",
+      comments_count: resolvedCommentsCount,
+      commentsCount: resolvedCommentsCount,
+      is_liked: isLiked,
+      isLiked,
+      is_saved: isSaved,
+      isSaved,
+      is_following: isFollowing,
+      isFollowing,
+      author: p.author
+        ? { ...p.author, is_following: isFollowing, isFollowing }
+        : p.author,
+    };
+  });
 }
 
 export const communityService = {
+  async getFollowedUserIds(userId: string): Promise<string[]> {
+    const client = getDbClient();
+    const { data, error } = await client
+      .from("user_follows")
+      .select("following_id")
+      .eq("follower_id", userId);
+
+    if (error) {
+      if (isMissingTableError(error)) return [];
+      throw new AppError(error.message, 400);
+    }
+
+    return (data ?? []).map((row: any) => row.following_id).filter(Boolean);
+  },
+
   async getPosts(options: GetPostsOptions = {}) {
     const client = getDbClient();
     const page = Math.max(1, options.page || 1);
@@ -24,139 +126,187 @@ export const communityService = {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
-    let query = client
-      .from("community_posts")
-      .select("id, user_id, title, content, images, tags, category, likes_count, saves_count, created_at, updated_at, author:profiles!user_id(id, full_name, avatar_url, role)", { count: "exact" });
+    const normalizedTab = options.tab?.trim().toLowerCase();
+    let followedIdsFilter = options.authorIds;
 
-    // Author filter
-    if (options.authorId) {
-      query = query.eq("user_id", options.authorId);
-    }
-
-    // Category filter (if not "All", "For You", "Trending")
-    if (
-      options.category &&
-      !["all", "for you", "trending"].includes(options.category.trim().toLowerCase())
-    ) {
-      const cat = options.category.trim();
-      query = query.or(`category.ilike.%${cat}%,tags.cs.{${cat}}`);
-    }
-
-    // Tag filter
-    if (options.tag) {
-      const cleanTag = options.tag.replace(/^#/, "").trim();
-      if (cleanTag) {
-        query = query.contains("tags", [cleanTag]);
+    if (normalizedTab === "following") {
+      if (!options.userId) {
+        return { records: [], total: 0, page, limit };
+      }
+      followedIdsFilter = await this.getFollowedUserIds(options.userId);
+      if (followedIdsFilter.length === 0) {
+        return { records: [], total: 0, page, limit };
       }
     }
 
-    // Search filter
-    if (options.search && options.search.trim()) {
-      const q = options.search.trim();
-      query = query.or(`title.ilike.%${q}%,content.ilike.%${q}%,category.ilike.%${q}%`);
+    const buildQuery = (selectClause: string, includeVisibilityFilter: boolean) => {
+      let query = client.from("community_posts").select(selectClause, { count: "exact" });
+
+      if (options.authorId) {
+        query = query.eq("user_id", options.authorId);
+      } else if (followedIdsFilter && followedIdsFilter.length > 0) {
+        query = query.in("user_id", followedIdsFilter);
+      }
+
+      if (includeVisibilityFilter) {
+        if (options.visibility && ["public", "followers", "private"].includes(options.visibility)) {
+          if (options.visibility === "private" && options.userId) {
+            query = query.eq("visibility", "private").eq("user_id", options.userId);
+          } else {
+            query = query.eq("visibility", options.visibility);
+          }
+        } else if (!options.authorId || options.authorId !== options.userId) {
+          query = query.neq("visibility", "private");
+        }
+      }
+
+      if (
+        options.category &&
+        !["all", "for you", "for-you", "trending", "following", "latest"].includes(
+          options.category.trim().toLowerCase()
+        )
+      ) {
+        const cat = options.category.trim();
+        query = query.or(`category.ilike.%${cat}%,tags.cs.{${cat}}`);
+      }
+
+      if (options.tag) {
+        const cleanTag = options.tag.replace(/^#/, "").trim();
+        if (cleanTag) {
+          query = query.contains("tags", [cleanTag]);
+        }
+      }
+
+      if (options.search && options.search.trim()) {
+        const q = options.search.trim();
+        query = query.or(`title.ilike.%${q}%,content.ilike.%${q}%,category.ilike.%${q}%`);
+      }
+
+      const isTrending =
+        normalizedTab === "trending" ||
+        (options.category && options.category.trim().toLowerCase() === "trending");
+
+      if (isTrending) {
+        query = query.order("likes_count", { ascending: false }).order("created_at", { ascending: false });
+      } else {
+        query = query.order("created_at", { ascending: false });
+      }
+
+      return query.range(from, to);
+    };
+
+    let { data, count, error } = await buildQuery(POST_SELECT_WITH_EXTRAS, true);
+    if (error && isMissingColumnError(error)) {
+      const fallback = await buildQuery(POST_SELECT_BASE, false);
+      data = fallback.data;
+      count = fallback.count;
+      error = fallback.error;
     }
 
-    // Sort order: "Trending" sorts by likes_count desc, otherwise created_at desc
-    if (options.category && options.category.trim().toLowerCase() === "trending") {
-      query = query.order("likes_count", { ascending: false }).order("created_at", { ascending: false });
-    } else {
-      query = query.order("created_at", { ascending: false });
-    }
-
-    const { data, count, error } = await query.range(from, to);
     if (error) throw new AppError(error.message, 400);
 
     let posts = (data ?? []) as any[];
-
-    // If authenticated userId is passed, attach is_liked and is_saved
-    if (options.userId && posts.length > 0) {
-      const postIds = posts.map((p) => p.id);
-      try {
-        const [likesRes, savesRes] = await Promise.all([
-          client.from("community_likes").select("post_id").eq("user_id", options.userId).in("post_id", postIds),
-          client.from("community_saves").select("post_id").eq("user_id", options.userId).in("post_id", postIds),
-        ]);
-
-        const likedSet = new Set((likesRes.data ?? []).map((l) => l.post_id));
-        const savedSet = new Set((savesRes.data ?? []).map((s) => s.post_id));
-
-        posts = posts.map((p) => {
-          const isLiked = likedSet.has(p.id);
-          const isSaved = savedSet.has(p.id);
-          return {
-            ...p,
-            is_liked: isLiked,
-            isLiked: isLiked,
-            is_saved: isSaved,
-            isSaved: isSaved,
-          };
-        });
-      } catch {
-        posts = posts.map((p) => ({
-          ...p,
-          is_liked: false,
-          isLiked: false,
-          is_saved: false,
-          isSaved: false,
-        }));
-      }
-    } else {
-      posts = posts.map((p) => ({
-        ...p,
-        is_liked: false,
-        isLiked: false,
-        is_saved: false,
-        isSaved: false,
-      }));
+    // Enforce followers-only visibility when viewer is not author or follower
+    if (posts.some((p) => p.visibility === "followers")) {
+      const viewerFollowing = options.userId
+        ? new Set(await this.getFollowedUserIds(options.userId))
+        : new Set<string>();
+      posts = posts.filter(
+        (p) =>
+          p.visibility !== "followers" ||
+          (options.userId && (p.user_id === options.userId || viewerFollowing.has(p.user_id)))
+      );
     }
 
+    const hydrated = await hydratePosts(posts, client, options.userId);
     return {
-      records: posts,
-      total: count ?? posts.length,
+      records: hydrated,
+      total: count ?? hydrated.length,
       page,
       limit,
     };
   },
 
+  async getFollowingFeed(userId: string, page = 1, limit = 20) {
+    if (!userId) throw new AppError("Authentication required", 401);
+    const client = getDbClient();
+    const followedIds = await this.getFollowedUserIds(userId);
+
+    const feedResult =
+      followedIds.length > 0
+        ? await this.getPosts({ page, limit, userId, authorIds: followedIds, tab: "latest" })
+        : { records: [], total: 0, page, limit };
+
+    // Provide "Who to follow" creator suggestions excluding self and already-followed accounts
+    let suggestedUsers: any[] = [];
+    try {
+      const { data: profiles } = await client
+        .from("profiles")
+        .select("id, full_name, avatar_url, role, bio")
+        .neq("id", userId)
+        .in("role", ["tailor", "customer"])
+        .limit(12);
+
+      const exclude = new Set([userId, ...followedIds]);
+      suggestedUsers = (profiles ?? [])
+        .filter((p: any) => !exclude.has(p.id))
+        .slice(0, 6)
+        .map((p: any) => ({ ...p, isFollowing: false, is_following: false }));
+    } catch {
+      suggestedUsers = [];
+    }
+
+    return {
+      ...feedResult,
+      followingCount: followedIds.length,
+      suggestedUsers,
+    };
+  },
+
+  async getTrendingPosts(userId?: string, page = 1, limit = 20) {
+    const result = await this.getPosts({ page, limit, userId, tab: "trending" });
+    const tagCounts = new Map<string, number>();
+    for (const post of result.records) {
+      if (Array.isArray(post.tags)) {
+        for (const tag of post.tags) {
+          const clean = String(tag).trim();
+          if (clean) tagCounts.set(clean, (tagCounts.get(clean) ?? 0) + 1);
+        }
+      }
+    }
+
+    const trendingTags = Array.from(tagCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([tag, count]) => ({ tag, count }));
+
+    return {
+      ...result,
+      trendingTags,
+    };
+  },
+
   async getPostById(postId: string, userId?: string) {
     const client = getDbClient();
-    const { data, error } = await client
-      .from("community_posts")
-      .select("id, user_id, title, content, images, tags, category, likes_count, saves_count, created_at, updated_at, author:profiles!user_id(id, full_name, avatar_url, role), comments:community_comments(id, post_id, user_id, content, created_at, user:profiles!user_id(id, full_name, avatar_url, role))")
-      .eq("id", postId)
-      .single();
+    const selectFull =
+      "id, user_id, title, content, images, tags, category, visibility, likes_count, saves_count, comments_count, created_at, updated_at, author:profiles!user_id(id, full_name, avatar_url, role), comments:community_comments(id, post_id, user_id, content, created_at, user:profiles!user_id(id, full_name, avatar_url, role))";
+    const selectBase =
+      "id, user_id, title, content, images, tags, category, likes_count, saves_count, created_at, updated_at, author:profiles!user_id(id, full_name, avatar_url, role), comments:community_comments(id, post_id, user_id, content, created_at, user:profiles!user_id(id, full_name, avatar_url, role))";
+
+    let { data, error }: { data: any; error: any } = await client.from("community_posts").select(selectFull).eq("id", postId).single();
+    if (error && isMissingColumnError(error)) {
+      const fallback = await client.from("community_posts").select(selectBase).eq("id", postId).single();
+      data = fallback.data;
+      error = fallback.error;
+    }
 
     if (error && error.code !== "PGRST116") {
       throw new AppError(error.message, 400);
     }
     if (!data) return null;
 
-    let post = data as any;
-    if (userId) {
-      try {
-        const [likeRes, saveRes] = await Promise.all([
-          client.from("community_likes").select("post_id").eq("post_id", postId).eq("user_id", userId).maybeSingle(),
-          client.from("community_saves").select("post_id").eq("post_id", postId).eq("user_id", userId).maybeSingle(),
-        ]);
-        const isLiked = Boolean(likeRes?.data);
-        const isSaved = Boolean(saveRes?.data);
-        post.is_liked = isLiked;
-        post.isLiked = isLiked;
-        post.is_saved = isSaved;
-        post.isSaved = isSaved;
-      } catch {
-        post.is_liked = false;
-        post.isLiked = false;
-        post.is_saved = false;
-        post.isSaved = false;
-      }
-    } else {
-      post.is_liked = false;
-      post.isLiked = false;
-      post.is_saved = false;
-      post.isSaved = false;
-    }
-    return post;
+    const [hydrated] = await hydratePosts([data], client, userId);
+    return hydrated;
   },
 
   async createPost(userId: string | undefined, _userRole: string | undefined, data: Record<string, unknown>, files?: Express.Multer.File[]) {
@@ -214,23 +364,34 @@ export const communityService = {
       mapped.tags = (mapped.tags as string).split(",").map((t) => t.trim()).filter(Boolean);
     }
 
-    // Prepare strict database columns matching public.community_posts
     const postPayload: Record<string, unknown> = {
       user_id: userId,
       title: mapped.title,
       content: mapped.content,
       images: mapped.images || [],
       tags: mapped.tags || [],
+      visibility: (data.visibility as string) || "public",
     };
     if (mapped.category) {
       postPayload.category = mapped.category;
     }
 
-    const { data: created, error } = await client
+    let { data: created, error } = await client
       .from("community_posts")
       .insert(postPayload)
       .select("*, author:profiles!user_id(*)")
       .single();
+
+    if (error && isMissingColumnError(error)) {
+      delete postPayload.visibility;
+      const retry = await client
+        .from("community_posts")
+        .insert(postPayload)
+        .select("*, author:profiles!user_id(*)")
+        .single();
+      created = retry.data;
+      error = retry.error;
+    }
 
     if (error) throw new AppError(error.message, 400);
     return created;
@@ -244,7 +405,7 @@ export const communityService = {
     }
     delete (mapped as any).caption;
 
-    const allowedColumns = ["title", "content", "images", "tags", "category"];
+    const allowedColumns = ["title", "content", "images", "tags", "category", "visibility"];
     const updatePayload: Record<string, unknown> = {};
     for (const col of allowedColumns) {
       if (col in mapped) {
@@ -252,13 +413,22 @@ export const communityService = {
       }
     }
 
-    let query = client.from("community_posts").update(updatePayload).eq("id", postId);
+    const runUpdate = async (payload: Record<string, unknown>) => {
+      let query = client.from("community_posts").update(payload).eq("id", postId);
+      if (userId && userRole !== "admin") {
+        query = query.eq("user_id", userId);
+      }
+      return query.select().single();
+    };
 
-    if (userId && userRole !== "admin") {
-      query = query.eq("user_id", userId);
+    let { data: updated, error } = await runUpdate(updatePayload);
+    if (error && isMissingColumnError(error) && "visibility" in updatePayload) {
+      delete updatePayload.visibility;
+      const retry = await runUpdate(updatePayload);
+      updated = retry.data;
+      error = retry.error;
     }
 
-    const { data: updated, error } = await query.select().single();
     if (error) throw new AppError(error.message, 400);
     return updated;
   },

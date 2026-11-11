@@ -12,6 +12,7 @@ import {
   resetPasswordSchema,
   googleAuthSchema,
   completeProfileSchema,
+  changePasswordSchema,
 } from "./auth.validator.js";
 
 
@@ -235,5 +236,30 @@ authRoutes.get("/google/callback", authController.googleCallback);
  *         description: Profile completed successfully
  */
 authRoutes.post("/complete-profile", requireAuth, validate(completeProfileSchema), asyncHandler(authController.completeProfile));
+
+/**
+ * @swagger
+ * /auth/change-password:
+ *   post:
+ *     summary: Change authenticated user's password after verifying current password
+ *     tags: [Auth]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [currentPassword, newPassword]
+ *             properties:
+ *               currentPassword: { type: string }
+ *               newPassword: { type: string, minLength: 8 }
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *       400:
+ *         description: Current password is incorrect
+ */
+authRoutes.post("/change-password", requireAuth, authLimiter, validate(changePasswordSchema), asyncHandler(authController.changePassword));
 
 

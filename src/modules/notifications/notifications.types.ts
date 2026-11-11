@@ -2,7 +2,19 @@ export interface MarkNotificationReadPayload {
   notificationId: string;
 }
 
-export type NotificationType = "order" | "appointment" | "message" | "system" | "info";
+export type NotificationType =
+  | "order"
+  | "order_update"
+  | "appointment"
+  | "message"
+  | "design"
+  | "payout"
+  | "refund"
+  | "dispute"
+  | "review_reply"
+  | "follow"
+  | "system"
+  | "info";
 
 export interface CreateNotificationInput {
   userId: string;

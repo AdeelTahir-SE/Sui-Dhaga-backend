@@ -72,6 +72,38 @@ usersRoutes.post("/users/unblock", requireAuth, asyncHandler(usersController.unb
 usersRoutes.get("/users/:userId/block-status", requireAuth, asyncHandler(usersController.getBlockStatus));
 
 /**
+ * @openapi
+ * /users/{userId}/follow:
+ *   post:
+ *     summary: Follow a creator or tailor
+ *     tags: [Community]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Followed successfully
+ *   delete:
+ *     summary: Unfollow a creator or tailor
+ *     tags: [Community]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Unfollowed successfully
+ */
+usersRoutes.get("/users/:userId/follow-status", requireAuth, asyncHandler(usersController.getFollowStatus));
+usersRoutes.post("/users/:userId/follow", requireAuth, asyncHandler(usersController.followUser));
+usersRoutes.delete("/users/:userId/follow", requireAuth, asyncHandler(usersController.unfollowUser));
+
+/**
  * @swagger
  * /users/{userId}:
  *   get:

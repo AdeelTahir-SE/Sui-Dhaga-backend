@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
+import { requireRole } from "../../middlewares/role.middleware.js";
 import { validate } from "../../middlewares/validation.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as reviewsController from "./reviews.controller.js";
-import { createReviewSchema, updateReviewSchema } from "./reviews.validator.js";
+import { createReviewSchema, replyReviewSchema, updateReviewSchema } from "./reviews.validator.js";
 
 export const reviewsRoutes = Router();
 
@@ -64,4 +65,78 @@ reviewsRoutes.get("/orders/:orderId/review", requireAuth, asyncHandler(reviewsCo
  */
 reviewsRoutes.post("/orders/:orderId/review", requireAuth, validate(createReviewSchema), asyncHandler(reviewsController.createOrderReview));
 
-
+/**
+ * @openapi
+ * /reviews/{reviewId}/reply:
+ *   post:
+ *     summary: Tailor replies to a customer review
+ *     tags: [Reviews]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: reviewId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reply: { type: string }
+ *               tailorReply: { type: string }
+ *     responses:
+ *       200:
+ *         description: Reply saved successfully
+ * /reviews/{reviewId}:
+ *   patch:
+ *     summary: Update an existing customer review
+ *     tags: [Reviews]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: reviewId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Review updated successfully
+ *   delete:
+ *     summary: Delete a customer review
+ *     tags: [Reviews]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: reviewId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Review deleted successfully
+ */
+reviewsRoutes.post(
+  "/reviews/:reviewId/reply",
+  requireAuth,
+  requireRole("tailor", "admin"),
+  validate(replyReviewSchema),
+  asyncHandler(reviewsController.replyToReview)
+);
+reviewsRoutes.post(
+  "/tailors/:tailorId/reviews/:reviewId/reply",
+  requireAuth,
+  requireRole("tailor", "admin"),
+  validate(replyReviewSchema),
+  asyncHandler(reviewsController.replyToReview)
+);
+reviewsRoutes.patch(
+  "/reviews/:reviewId",
+  requireAuth,
+  validate(updateReviewSchema),
+  asyncHandler(reviewsController.updateReview)
+);
+reviewsRoutes.delete("/reviews/:reviewId", requireAuth, asyncHandler(reviewsController.deleteReview));

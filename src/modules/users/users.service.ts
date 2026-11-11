@@ -1,6 +1,8 @@
 import { getDbClient, toSnakeCase } from "../../utils/resource-helper.js";
 import { AppError } from "../../utils/app-error.js";
 import { storageService } from "../../services/storage.service.js";
+import { notificationsService } from "../notifications/notifications.service.js";
+import { isMissingTableError, throwDbError } from "../../utils/supabase-error.js";
 
 // In-memory fallback block cache for instant lookup and resiliency across environments
 const inMemoryBlocks = new Set<string>();
@@ -305,6 +307,119 @@ export const usersService = {
       isBlocked: blockedByMe || blockedByOther,
       blockedByMe,
       blockedByOther,
+    };
+  },
+
+  async followUser(followerId: string, rawTargetId: string) {
+    if (!followerId) throw new AppError("Authentication required", 401);
+    const { resolvedId } = await resolveProfileUserId(rawTargetId);
+    if (!resolvedId) throw new AppError("Target user not found", 404);
+    if (resolvedId.toLowerCase() === followerId.toLowerCase()) {
+      throw new AppError("You cannot follow yourself", 400);
+    }
+
+    const client = getDbClient();
+    const { error } = await client
+      .from("user_follows")
+      .upsert(
+        { follower_id: followerId, following_id: resolvedId },
+        { onConflict: "follower_id,following_id" }
+      );
+
+    if (error) {
+      throwDbError(error, "user_follows");
+    }
+
+    const { count: followersCount } = await client
+      .from("user_follows")
+      .select("id", { count: "exact", head: true })
+      .eq("following_id", resolvedId);
+
+    await notificationsService
+      .createNotification({
+        userId: resolvedId,
+        title: "New follower",
+        message: "Someone started following your profile",
+        type: "follow",
+        data: { followerId },
+      })
+      .catch(() => {});
+
+    return {
+      following: true,
+      isFollowing: true,
+      followingId: resolvedId,
+      followersCount: followersCount ?? 1,
+    };
+  },
+
+  async unfollowUser(followerId: string, rawTargetId: string) {
+    if (!followerId) throw new AppError("Authentication required", 401);
+    const { resolvedId } = await resolveProfileUserId(rawTargetId);
+    if (!resolvedId) throw new AppError("Target user not found", 404);
+
+    const client = getDbClient();
+    const { error } = await client
+      .from("user_follows")
+      .delete()
+      .eq("follower_id", followerId)
+      .eq("following_id", resolvedId);
+
+    if (error) {
+      throwDbError(error, "user_follows");
+    }
+
+    const { count: followersCount } = await client
+      .from("user_follows")
+      .select("id", { count: "exact", head: true })
+      .eq("following_id", resolvedId);
+
+    return {
+      following: false,
+      isFollowing: false,
+      followingId: resolvedId,
+      followersCount: followersCount ?? 0,
+    };
+  },
+
+  async getFollowStatus(userId: string | undefined, rawTargetId: string) {
+    const { resolvedId } = await resolveProfileUserId(rawTargetId);
+    if (!resolvedId) throw new AppError("Target user not found", 404);
+
+    const client = getDbClient();
+    const [followersRes, followingRes, relationRes] = await Promise.all([
+      client
+        .from("user_follows")
+        .select("id", { count: "exact", head: true })
+        .eq("following_id", resolvedId),
+      client
+        .from("user_follows")
+        .select("id", { count: "exact", head: true })
+        .eq("follower_id", resolvedId),
+      userId
+        ? client
+            .from("user_follows")
+            .select("id")
+            .eq("follower_id", userId)
+            .eq("following_id", resolvedId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null } as any),
+    ]);
+
+    if (followersRes.error && isMissingTableError(followersRes.error)) {
+      return {
+        userId: resolvedId,
+        isFollowing: false,
+        followersCount: 0,
+        followingCount: 0,
+      };
+    }
+
+    return {
+      userId: resolvedId,
+      isFollowing: Boolean(relationRes?.data),
+      followersCount: followersRes.count ?? 0,
+      followingCount: followingRes.count ?? 0,
     };
   },
 

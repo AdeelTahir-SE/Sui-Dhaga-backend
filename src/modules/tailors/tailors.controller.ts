@@ -295,14 +295,26 @@ export const deleteTailor: RequestHandler = async (req, res) => {
   success(res, null, "Tailor profile deleted successfully");
 };
 
+export const getGallery: RequestHandler = async (req, res) => {
+  const gallery = await tailorsService.getGallery(asString(req.params.tailorId));
+  success(res, gallery, "Gallery fetched successfully");
+};
+
 export const addGalleryImage: RequestHandler = async (req, res) => {
   const updated = await tailorsService.addGalleryImage(asString(req.params.tailorId), req.user?.id, req.userRole, req.file, req.body);
   success(res, updated, "Gallery image added successfully", 201);
 };
 
 export const deleteGalleryImage: RequestHandler = async (req, res) => {
-  await tailorsService.updateTailor(asString(req.params.tailorId), req.user?.id, req.userRole, { removeImageId: asString(req.params.imageId) });
-  success(res, null, "Gallery image deleted successfully");
+  const imageId = req.params.imageId
+    ? asString(req.params.imageId)
+    : (req.body?.imageId || req.body?.id || req.query?.imageId) as string | undefined;
+  const imageUrl = (req.body?.imageUrl || req.body?.url || req.query?.imageUrl) as string | undefined;
+  const deleted = await tailorsService.deleteGalleryImage(asString(req.params.tailorId), req.user?.id, req.userRole, {
+    imageId,
+    imageUrl,
+  });
+  success(res, deleted, "Gallery image deleted successfully");
 };
 
 export const requestVerification: RequestHandler = async (req, res) => {
@@ -325,12 +337,25 @@ export const addTailorService: RequestHandler = async (req, res) => {
 };
 
 export const updateTailorService: RequestHandler = async (req, res) => {
-  const updated = await tailorsService.updateTailorService(asString(req.params.serviceId), req.user?.id, req.userRole, req.body);
+  const tailorIdParam = req.params.tailorId ? asString(req.params.tailorId) : undefined;
+  const updated = await tailorsService.updateTailorService(
+    asString(req.params.serviceId),
+    req.user?.id,
+    req.userRole,
+    req.body,
+    tailorIdParam
+  );
   success(res, updated, "Service updated successfully");
 };
 
 export const deleteTailorService: RequestHandler = async (req, res) => {
-  await tailorsService.deleteTailorService(asString(req.params.serviceId), req.user?.id, req.userRole);
+  const tailorIdParam = req.params.tailorId ? asString(req.params.tailorId) : undefined;
+  await tailorsService.deleteTailorService(
+    asString(req.params.serviceId),
+    req.user?.id,
+    req.userRole,
+    tailorIdParam
+  );
   success(res, null, "Service deleted successfully");
 };
 
@@ -352,4 +377,38 @@ export const updateAvailabilitySlot: RequestHandler = async (req, res) => {
 export const deleteAvailabilitySlot: RequestHandler = async (req, res) => {
   await tailorsService.deleteAvailabilitySlot(asString(req.params.slotId), req.user?.id, req.userRole);
   success(res, null, "Availability slot deleted successfully");
+};
+
+export const getBlockedDates: RequestHandler = async (req, res) => {
+  const data = await tailorsService.getBlockedDates(asString(req.params.tailorId), req.user?.id);
+  success(res, data, "Blocked dates fetched successfully");
+};
+
+export const setBlockedDates: RequestHandler = async (req, res) => {
+  const updated = await tailorsService.setBlockedDates(asString(req.params.tailorId), req.user?.id, req.userRole, req.body);
+  success(res, updated, "Blocked dates updated successfully");
+};
+
+export const getPayoutSettings: RequestHandler = async (req, res) => {
+  const tailorIdParam = req.params.tailorId ? asString(req.params.tailorId) : "me";
+  const settings = await tailorsService.getPayoutSettings(req.user?.id, req.userRole, tailorIdParam);
+  success(res, settings, "Payout settings fetched successfully");
+};
+
+export const upsertPayoutSettings: RequestHandler = async (req, res) => {
+  const tailorIdParam = req.params.tailorId ? asString(req.params.tailorId) : "me";
+  const settings = await tailorsService.upsertPayoutSettings(req.user?.id, req.userRole, req.body, tailorIdParam);
+  success(res, settings, "Payout settings saved successfully");
+};
+
+export const getPayouts: RequestHandler = async (req, res) => {
+  const tailorIdParam = req.params.tailorId ? asString(req.params.tailorId) : "me";
+  const result = await tailorsService.getPayoutsSummary(req.user?.id, req.userRole, tailorIdParam);
+  success(res, result, "Payout summary fetched successfully");
+};
+
+export const requestPayout: RequestHandler = async (req, res) => {
+  const tailorIdParam = req.params.tailorId ? asString(req.params.tailorId) : "me";
+  const result = await tailorsService.requestPayout(req.user?.id, req.userRole, req.body, tailorIdParam);
+  success(res, result, "Payout request submitted successfully", 201);
 };

@@ -77,6 +77,26 @@ export const communityRoutes = Router();
  *       201:
  *         description: Post created successfully
  */
+/**
+ * @openapi
+ * /community/following:
+ *   get:
+ *     summary: Get posts from followed creators and recommended creators to follow
+ *     tags: [Community]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Following feed fetched successfully
+ * /community/trending:
+ *   get:
+ *     summary: Get trending community posts and trending tags
+ *     tags: [Community]
+ *     responses:
+ *       200:
+ *         description: Trending posts fetched successfully
+ */
+communityRoutes.get("/community/following", requireAuth, asyncHandler(communityController.getFollowingFeed));
+communityRoutes.get("/community/trending", optionalAuth, asyncHandler(communityController.getTrendingPosts));
 communityRoutes.get("/community/posts", optionalAuth, asyncHandler(communityController.getPosts));
 communityRoutes.post("/community/posts", requireAuth, uploadCommunityMedia("images", 10), validate(createCommunityPostSchema), asyncHandler(communityController.createPost));
 

@@ -18,6 +18,18 @@ export const createOrderReview: RequestHandler = async (req, res) => {
   success(res, created, "Review submitted successfully", 201);
 };
 
+export const replyToReview: RequestHandler = async (req, res) => {
+  const tailorIdParam = req.params.tailorId ? asString(req.params.tailorId) : undefined;
+  const updated = await reviewsService.replyToReview(
+    asString(req.params.reviewId),
+    req.user?.id,
+    req.userRole,
+    req.body,
+    tailorIdParam
+  );
+  success(res, updated, "Reply submitted successfully");
+};
+
 export const updateReview: RequestHandler = async (req, res) => {
   const updated = await reviewsService.updateReview(asString(req.params.reviewId), req.user?.id, req.userRole, req.body);
   success(res, updated, "Review updated successfully");

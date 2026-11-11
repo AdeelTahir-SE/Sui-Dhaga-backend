@@ -15,6 +15,15 @@ import { uploadsRoutes } from "../modules/uploads/uploads.routes.js";
 import { adminRoutes } from "../modules/admin/admin.routes.js";
 import { appVersionRoutes } from "../modules/app-version/app-version.routes.js";
 
+import { addressesRoutes } from "../modules/addresses/addresses.routes.js";
+import { paymentMethodsRoutes } from "../modules/payment-methods/payment-methods.routes.js";
+import { couponsRoutes } from "../modules/coupons/coupons.routes.js";
+import { subscriptionsRoutes } from "../modules/subscriptions/subscriptions.routes.js";
+import { wishlistRoutes } from "../modules/wishlist/wishlist.routes.js";
+import { contactRoutes } from "../modules/contact/contact.routes.js";
+import { fabricsRoutes } from "../modules/fabrics/fabrics.routes.js";
+import { blogRoutes } from "../modules/blog/blog.routes.js";
+
 export const apiRoutes = Router();
 
 apiRoutes.use("/auth", authRoutes);
@@ -32,3 +41,11 @@ apiRoutes.use(paymentsRoutes);
 apiRoutes.use(notificationsRoutes);
 apiRoutes.use(uploadsRoutes);
 apiRoutes.use(adminRoutes);
+apiRoutes.use(addressesRoutes);
+apiRoutes.use(paymentMethodsRoutes);
+apiRoutes.use(couponsRoutes);
+apiRoutes.use(subscriptionsRoutes);
+apiRoutes.use(wishlistRoutes);
+apiRoutes.use(contactRoutes);
+apiRoutes.use(fabricsRoutes);
+apiRoutes.use(blogRoutes);

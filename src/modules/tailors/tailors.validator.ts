@@ -51,9 +51,11 @@ export const requestVerificationSchema = z.object({
 
 export const tailorServiceSchema = z.object({
   title: z.string().min(1),
-  price: z.number().positive(),
+  price: z.coerce.number().positive(),
   description: z.string().optional(),
   category: z.string().optional(),
+  isActive: z.boolean().optional(),
+  is_active: z.boolean().optional(),
 });
 
 export const tailorAvailabilitySlotSchema = z.object({
@@ -107,3 +109,52 @@ export const getNearbyTailorsQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional(),
 });
 
+const blockedDateEntrySchema = z.union([
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Dates must use YYYY-MM-DD format"),
+  z.object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Dates must use YYYY-MM-DD format"),
+    reason: z.string().max(255).optional(),
+  }),
+]);
+
+export const blockedDatesSchema = z.union([
+  z.object({ blockedDates: z.array(blockedDateEntrySchema) }),
+  z.object({ dates: z.array(blockedDateEntrySchema) }),
+  z.object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must use YYYY-MM-DD format"),
+    reason: z.string().max(255).optional(),
+  }),
+]);
+
+export const payoutSettingsSchema = z.object({
+  provider: z
+    .enum(["bank_transfer", "jazzcash", "easypaisa", "sadapay", "nayapay", "stripe"])
+    .optional(),
+  accountTitle: z.string().min(2).max(120).optional(),
+  account_title: z.string().min(2).max(120).optional(),
+  accountNumber: z.string().min(4).max(64).optional(),
+  account_number: z.string().min(4).max(64).optional(),
+  bankName: z.string().max(120).optional(),
+  bank_name: z.string().max(120).optional(),
+  iban: z.string().max(50).optional(),
+  branchCode: z.string().max(30).optional(),
+  branch_code: z.string().max(30).optional(),
+  walletPhone: z.string().max(30).optional(),
+  wallet_phone: z.string().max(30).optional(),
+  autoPayout: z.boolean().optional(),
+  auto_payout: z.boolean().optional(),
+});
+
+export const payoutRequestSchema = z.object({
+  amount: z.coerce.number().positive("Payout amount must be greater than zero"),
+  provider: z
+    .enum(["bank_transfer", "jazzcash", "easypaisa", "sadapay", "nayapay", "stripe"])
+    .optional(),
+  accountTitle: z.string().max(120).optional(),
+  account_title: z.string().max(120).optional(),
+  accountNumber: z.string().max(64).optional(),
+  account_number: z.string().max(64).optional(),
+  bankName: z.string().max(120).optional(),
+  bank_name: z.string().max(120).optional(),
+  notes: z.string().max(500).optional(),
+});

@@ -9,8 +9,15 @@ export const getPosts: RequestHandler = async (req, res) => {
   const category = typeof req.query.category === "string" ? req.query.category : undefined;
   const tag = typeof req.query.tag === "string" ? req.query.tag : undefined;
   const search = typeof req.query.search === "string" ? req.query.search : undefined;
+  const tab = typeof req.query.tab === "string" ? req.query.tab : undefined;
+  const visibility = typeof req.query.visibility === "string" ? req.query.visibility : undefined;
   const userId = req.user?.id;
-  const authorId = typeof req.query.authorId === "string" ? req.query.authorId : typeof req.query.userId === "string" ? req.query.userId : undefined;
+  const authorId =
+    typeof req.query.authorId === "string"
+      ? req.query.authorId
+      : typeof req.query.userId === "string"
+        ? req.query.userId
+        : undefined;
 
   const result = await communityService.getPosts({
     page,
@@ -18,11 +25,52 @@ export const getPosts: RequestHandler = async (req, res) => {
     category,
     tag,
     search,
+    tab,
+    visibility,
     userId,
     authorId,
   });
 
   paginated(res, result.records, page, limit, result.total, "Community posts fetched successfully");
+};
+
+export const getFollowingFeed: RequestHandler = async (req, res) => {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+  const result = await communityService.getFollowingFeed(req.user!.id, page, limit);
+
+  res.status(200).json({
+    success: true,
+    message: "Following feed fetched successfully",
+    data: result.records,
+    meta: {
+      page,
+      limit,
+      total: result.total,
+      totalPages: Math.ceil(result.total / limit),
+    },
+    followingCount: result.followingCount,
+    suggestedUsers: result.suggestedUsers,
+  });
+};
+
+export const getTrendingPosts: RequestHandler = async (req, res) => {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+  const result = await communityService.getTrendingPosts(req.user?.id, page, limit);
+
+  res.status(200).json({
+    success: true,
+    message: "Trending posts fetched successfully",
+    data: result.records,
+    meta: {
+      page,
+      limit,
+      total: result.total,
+      totalPages: Math.ceil(result.total / limit),
+    },
+    trendingTags: result.trendingTags,
+  });
 };
 
 export const createPost: RequestHandler = async (req, res) => {

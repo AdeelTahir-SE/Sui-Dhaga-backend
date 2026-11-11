@@ -77,6 +77,23 @@ erDiagram
 | `reports` | Moderation & user reports | `id`, `reporter_id` (FK), `target_type`, `target_id`, `reason`, `status` |
 | `app_versions` | In-app version control & forced updates | `id`, `platform`, `latest_version`, `min_version`, `download_url`, `force_update` |
 | `user_blocks` | Peer-to-peer user blocks | `id`, `blocker_id` (FK), `blocked_id` (FK), `reason` |
+| `design_templates` | Starter design studio templates | `id`, `name`, `category`, `outfit_type`, `fabric_type`, `prompt` |
+| `tailor_blocked_dates` | Blocked calendar dates per tailor | `id`, `tailor_id` (FK), `blocked_date`, `reason` |
+| `tailor_payout_settings` | Tailor bank/wallet payout configuration | `id`, `tailor_id` (FK), `provider`, `account_number`, `iban` |
+| `tailor_payouts` | Tailor payout requests and settlement history | `id`, `tailor_id` (FK), `amount`, `status`, `provider`, `reference` |
+| `addresses` | Customer saved shipping addresses | `id`, `user_id` (FK), `label`, `street`, `city`, `is_default` |
+| `payment_methods` | Saved card/wallet references (last4/tokenized) | `id`, `user_id` (FK), `type`, `provider`, `last4`, `is_default` |
+| `coupons` | Promo codes and discount rules | `id`, `code`, `discount_type`, `discount_value`, `is_active` |
+| `subscription_plans` | Platform subscription tiers | `id`, `slug`, `name`, `price_monthly`, `price_yearly`, `features` |
+| `user_subscriptions` | Active user subscriptions | `id`, `user_id` (FK), `plan_id` (FK), `status`, `billing_cycle` |
+| `wishlist_items` | Saved tailors & designs per user | `id`, `user_id` (FK), `item_type`, `tailor_id`, `design_id` |
+| `user_follows` | Community creator follow graph | `id`, `follower_id` (FK), `following_id` (FK) |
+| `disputes` | Order disputes and admin resolutions | `id`, `order_id` (FK), `raised_by` (FK), `status`, `resolution` |
+| `cms_content` | Admin-editable static/CMS sections | `id`, `section_key`, `title`, `content`, `is_published` |
+| `platform_settings` | Global platform settings key-value store | `id`, `setting_key`, `setting_value` |
+| `contact_messages` | Contact form submissions | `id`, `user_id`, `name`, `email`, `subject`, `message` |
+| `fabrics` | Curated fabric catalog | `id`, `name`, `slug`, `category`, `price_per_meter`, `season` |
+| `blog_posts` | Editorial articles and guides | `id`, `slug`, `title`, `content`, `category`, `is_published` |
 
 ---
 
@@ -84,6 +101,7 @@ erDiagram
 
 - All schema definitions are stored in [`supabase/migrations/001_initial_schema.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/migrations/001_initial_schema.sql).
 - Schema optimizations, index pruning, and cleanup are managed via [`supabase/migrations/013_database_optimization.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/migrations/013_database_optimization.sql).
+- Backend integration gap tables & columns are added idempotently in `supabase/migrations/014_fulfill_backend_gaps.sql`.
 - Row Level Security policies are maintained in [`supabase/policies/rls-policies.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/policies/rls-policies.sql).
 - Seed data for development is located in [`supabase/seed/seed.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/seed/seed.sql).
 - Storage buckets configuration is located in [`supabase/storage/buckets.sql`](file:///e:/codingfolder/Sui%20Dhaga/backend/supabase/storage/buckets.sql).

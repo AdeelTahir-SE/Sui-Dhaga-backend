@@ -56,3 +56,21 @@ export const completeProfileSchema = z.object({
   specialties: z.array(z.string()).optional(),
 });
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1).optional(),
+    current_password: z.string().min(1).optional(),
+    oldPassword: z.string().min(1).optional(),
+    newPassword: z.string().min(8, "New password must be at least 8 characters").optional(),
+    new_password: z.string().min(8, "New password must be at least 8 characters").optional(),
+    password: z.string().min(8, "New password must be at least 8 characters").optional(),
+  })
+  .refine(
+    (data) => Boolean(data.currentPassword || data.current_password || data.oldPassword),
+    { message: "Current password is required" }
+  )
+  .refine(
+    (data) => Boolean(data.newPassword || data.new_password || data.password),
+    { message: "New password (minimum 8 characters) is required" }
+  );
+

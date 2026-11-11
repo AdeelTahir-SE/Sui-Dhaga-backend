@@ -381,3 +381,113 @@ create policy "Users can create reports" on public.reports
 drop policy if exists "Admins can view and manage reports" on public.reports;
 create policy "Admins can view and manage reports" on public.reports
   for all using (public.is_admin());
+
+
+-- ============================================================================
+-- 15. EXTENDED PLATFORM TABLES (Migration 014)
+-- ============================================================================
+alter table public.design_templates enable row level security;
+alter table public.tailor_blocked_dates enable row level security;
+alter table public.tailor_payout_settings enable row level security;
+alter table public.tailor_payouts enable row level security;
+alter table public.addresses enable row level security;
+alter table public.payment_methods enable row level security;
+alter table public.coupons enable row level security;
+alter table public.subscription_plans enable row level security;
+alter table public.user_subscriptions enable row level security;
+alter table public.user_follows enable row level security;
+alter table public.disputes enable row level security;
+alter table public.cms_content enable row level security;
+alter table public.platform_settings enable row level security;
+alter table public.contact_messages enable row level security;
+alter table public.blog_posts enable row level security;
+
+drop policy if exists "Design templates viewable by everyone" on public.design_templates;
+create policy "Design templates viewable by everyone" on public.design_templates
+  for select using (is_active = true or public.is_admin());
+drop policy if exists "Admins manage design templates" on public.design_templates;
+create policy "Admins manage design templates" on public.design_templates
+  for all using (public.is_admin());
+
+drop policy if exists "Blocked dates viewable by everyone" on public.tailor_blocked_dates;
+create policy "Blocked dates viewable by everyone" on public.tailor_blocked_dates
+  for select using (true);
+drop policy if exists "Tailors manage their blocked dates" on public.tailor_blocked_dates;
+create policy "Tailors manage their blocked dates" on public.tailor_blocked_dates
+  for all using (exists (select 1 from public.tailors where id = tailor_id and user_id = auth.uid()) or public.is_admin());
+
+drop policy if exists "Tailors manage their payout settings" on public.tailor_payout_settings;
+create policy "Tailors manage their payout settings" on public.tailor_payout_settings
+  for all using (exists (select 1 from public.tailors where id = tailor_id and user_id = auth.uid()) or public.is_admin());
+
+drop policy if exists "Tailors view and request their payouts" on public.tailor_payouts;
+create policy "Tailors view and request their payouts" on public.tailor_payouts
+  for all using (user_id = auth.uid() or public.is_admin());
+
+drop policy if exists "Users manage their own addresses" on public.addresses;
+create policy "Users manage their own addresses" on public.addresses
+  for all using (user_id = auth.uid() or public.is_admin());
+
+drop policy if exists "Users manage their own payment methods" on public.payment_methods;
+create policy "Users manage their own payment methods" on public.payment_methods
+  for all using (user_id = auth.uid() or public.is_admin());
+
+drop policy if exists "Active coupons readable by authenticated" on public.coupons;
+create policy "Active coupons readable by authenticated" on public.coupons
+  for select using (is_active = true or public.is_admin());
+drop policy if exists "Admins manage coupons" on public.coupons;
+create policy "Admins manage coupons" on public.coupons
+  for all using (public.is_admin());
+
+drop policy if exists "Subscription plans viewable by everyone" on public.subscription_plans;
+create policy "Subscription plans viewable by everyone" on public.subscription_plans
+  for select using (is_active = true or public.is_admin());
+drop policy if exists "Admins manage subscription plans" on public.subscription_plans;
+create policy "Admins manage subscription plans" on public.subscription_plans
+  for all using (public.is_admin());
+
+drop policy if exists "Users view and manage their subscriptions" on public.user_subscriptions;
+create policy "Users view and manage their subscriptions" on public.user_subscriptions
+  for all using (user_id = auth.uid() or public.is_admin());
+
+drop policy if exists "Follows viewable by everyone" on public.user_follows;
+create policy "Follows viewable by everyone" on public.user_follows
+  for select using (true);
+drop policy if exists "Users manage their own follows" on public.user_follows;
+create policy "Users manage their own follows" on public.user_follows
+  for all using (follower_id = auth.uid() or public.is_admin());
+
+drop policy if exists "Users view own disputes" on public.disputes;
+create policy "Users view own disputes" on public.disputes
+  for select using (raised_by = auth.uid() or against_user_id = auth.uid() or public.is_admin());
+drop policy if exists "Users create disputes" on public.disputes;
+create policy "Users create disputes" on public.disputes
+  for insert with check (raised_by = auth.uid() or public.is_admin());
+drop policy if exists "Admins manage disputes" on public.disputes;
+create policy "Admins manage disputes" on public.disputes
+  for all using (public.is_admin());
+
+drop policy if exists "Published CMS readable by everyone" on public.cms_content;
+create policy "Published CMS readable by everyone" on public.cms_content
+  for select using (is_published = true or public.is_admin());
+drop policy if exists "Admins manage CMS" on public.cms_content;
+create policy "Admins manage CMS" on public.cms_content
+  for all using (public.is_admin());
+
+drop policy if exists "Admins manage platform settings" on public.platform_settings;
+create policy "Admins manage platform settings" on public.platform_settings
+  for all using (public.is_admin());
+
+drop policy if exists "Anyone can submit contact messages" on public.contact_messages;
+create policy "Anyone can submit contact messages" on public.contact_messages
+  for insert with check (true);
+drop policy if exists "Admins manage contact messages" on public.contact_messages;
+create policy "Admins manage contact messages" on public.contact_messages
+  for all using (public.is_admin());
+
+drop policy if exists "Published blog posts viewable by everyone" on public.blog_posts;
+create policy "Published blog posts viewable by everyone" on public.blog_posts
+  for select using (is_published = true or public.is_admin());
+drop policy if exists "Admins manage blog posts" on public.blog_posts;
+create policy "Admins manage blog posts" on public.blog_posts
+  for all using (public.is_admin());
