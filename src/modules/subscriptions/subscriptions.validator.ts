@@ -9,8 +9,18 @@ export const subscriptionCheckoutSchema = z
     billingCycle: z.enum(["monthly", "yearly"]).default("monthly"),
     billing_cycle: z.enum(["monthly", "yearly"]).optional(),
     provider: z
-      .enum(["stripe", "safepay", "jazzcash", "easypaisa", "sadapay", "nayapay"])
-      .default("safepay"),
+      .enum([
+        "stripe",
+        "safepay",
+        "jazzcash",
+        "easypaisa",
+        "sadapay",
+        "nayapay",
+        "free",
+        "direct",
+        "manual",
+      ])
+      .optional(),
   })
   .refine(
     (data) => Boolean(data.planId || data.plan_id || data.planSlug || data.plan_slug),

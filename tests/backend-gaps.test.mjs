@@ -273,7 +273,10 @@ describe("Sui-Dhaga Backend Gaps Fulfillment Suite", () => {
         "POST /api/v1/payments/create-checkout",
         "POST /api/v1/coupons/validate",
         "GET /api/v1/subscriptions/plans",
+        "GET /api/v1/subscriptions/me",
         "POST /api/v1/subscriptions/checkout",
+        "POST /api/v1/subscriptions/activate",
+        "POST /api/v1/subscriptions/cancel",
         "GET /api/v1/wishlist",
         "POST /api/v1/wishlist/:tailorId",
         "DELETE /api/v1/wishlist/:tailorId",
@@ -762,6 +765,127 @@ describe("Sui-Dhaga Backend Gaps Fulfillment Suite", () => {
       });
       assert.equal(wishList.status, 200);
       assert.equal(wishList.body.data.length, 1);
+    });
+
+    it("defaults to normal subscription and activates paid plans directly without payment checks", async () => {
+      const freePlanId = "11111111-1111-4111-8111-111111111111";
+      const paidPlanId = "22222222-2222-4222-8222-222222222222";
+      const dbPlans = [
+        {
+          id: freePlanId,
+          slug: "customer-free",
+          name: "Starter",
+          target_role: "customer",
+          price_monthly: 0,
+          price_yearly: 0,
+          currency: "PKR",
+          is_active: true,
+        },
+        {
+          id: paidPlanId,
+          slug: "customer-plus",
+          name: "Atelier Plus",
+          target_role: "customer",
+          price_monthly: 1499,
+          price_yearly: 14990,
+          currency: "PKR",
+          is_active: true,
+        },
+      ];
+      const storedRows = [];
+
+      mockUserAuth({ id: "cust-sub-1", email: "sub@test.pk", role: "customer" });
+      mockDb({
+        profiles: () => ({ data: { role: "customer", status: "active" } }),
+        tailors: () => ({ data: null }),
+        subscription_plans: () => ({ data: dbPlans }),
+        user_subscriptions: (state) => {
+          if (state.op === "select") {
+            const activeRow = [...storedRows]
+              .reverse()
+              .find((r) => r.user_id === "cust-sub-1" && r.status === "active");
+            if (!activeRow) return { data: null };
+            const plan = dbPlans.find((p) => p.id === activeRow.plan_id) || null;
+            return { data: { ...activeRow, plan } };
+          }
+          if (state.op === "update") {
+            assert.notEqual(state.payload.status, "superseded");
+            for (const row of storedRows) {
+              if (row.user_id === "cust-sub-1" && row.status === "active") {
+                Object.assign(row, state.payload);
+              }
+            }
+            const last = storedRows[storedRows.length - 1] || null;
+            return { data: last };
+          }
+          if (state.op === "insert") {
+            assert.equal("payment_reference" in state.payload, false);
+            const inserted = {
+              id: `sub-row-${storedRows.length + 1}`,
+              created_at: new Date().toISOString(),
+              ...state.payload,
+            };
+            storedRows.push(inserted);
+            const plan = dbPlans.find((p) => p.id === inserted.plan_id) || null;
+            return { data: { ...inserted, plan } };
+          }
+          return { data: null };
+        },
+      });
+
+      // 1. Default normal subscription is provisioned and active
+      const initial = await invokeApp("GET", "/api/v1/subscriptions/me", undefined, {
+        authorization: "Bearer test-token",
+      });
+      assert.equal(initial.status, 200);
+      assert.equal(initial.body.data.status, "active");
+      assert.equal(initial.body.data.amount, 0);
+      assert.equal(initial.body.data.plan.slug, "customer-free");
+      assert.equal(storedRows.length, 1);
+
+      // 2. Cancelling while only on default normal plan returns 404
+      const cancelDefault = await invokeApp("POST", "/api/v1/subscriptions/cancel", {}, {
+        authorization: "Bearer test-token",
+      });
+      assert.equal(cancelDefault.status, 404);
+
+      // 3. Frontend activates paid plan directly without provider/payment checks
+      const activated = await invokeApp(
+        "POST",
+        "/api/v1/subscriptions/activate",
+        { planSlug: "customer-plus", billingCycle: "monthly" },
+        { authorization: "Bearer test-token" }
+      );
+      assert.equal(activated.status, 201);
+      assert.equal(activated.body.data.status, "active");
+      assert.equal(activated.body.data.amount, 1499);
+      assert.equal(activated.body.data.subscription.status, "active");
+      assert.equal(activated.body.data.subscription.plan.slug, "customer-plus");
+      assert.equal(storedRows[0].status, "expired");
+      assert.equal(storedRows[1].status, "active");
+
+      // 4. Subsequent GET /me returns the active paid plan
+      const currentPaid = await invokeApp("GET", "/api/v1/subscriptions/me", undefined, {
+        authorization: "Bearer test-token",
+      });
+      assert.equal(currentPaid.status, 200);
+      assert.equal(currentPaid.body.data.plan.slug, "customer-plus");
+      assert.equal(currentPaid.body.data.status, "active");
+
+      // 5. Cancelling paid plan marks it cancelled and falls back to normal default plan
+      const cancelled = await invokeApp("POST", "/api/v1/subscriptions/cancel", {}, {
+        authorization: "Bearer test-token",
+      });
+      assert.equal(cancelled.status, 200);
+      assert.equal(cancelled.body.data.status, "cancelled");
+      assert.equal(cancelled.body.data.cancel_at_period_end, true);
+
+      const afterCancel = await invokeApp("GET", "/api/v1/subscriptions/me", undefined, {
+        authorization: "Bearer test-token",
+      });
+      assert.equal(afterCancel.status, 200);
+      assert.equal(afterCancel.body.data.plan.slug, "customer-free");
+      assert.equal(afterCancel.body.data.amount, 0);
     });
   });
 

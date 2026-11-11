@@ -18,7 +18,7 @@ export const subscriptionsRoutes = Router();
  *         description: Subscription plans fetched successfully
  * /subscriptions/me:
  *   get:
- *     summary: Get current user's active subscription
+ *     summary: Get current user's active subscription (defaults to normal free plan)
  *     tags: [Subscriptions]
  *     security: [{ BearerAuth: [] }]
  *     responses:
@@ -26,7 +26,7 @@ export const subscriptionsRoutes = Router();
  *         description: Active subscription details
  * /subscriptions/checkout:
  *   post:
- *     summary: Start checkout or activate a subscription plan
+ *     summary: Directly activate a subscription plan in the database
  *     tags: [Subscriptions]
  *     security: [{ BearerAuth: [] }]
  *     requestBody:
@@ -37,15 +37,34 @@ export const subscriptionsRoutes = Router();
  *             type: object
  *             properties:
  *               planId: { type: string }
- *               planSlug: { type: string, example: "atelier-plus" }
+ *               planSlug: { type: string, example: "customer-plus" }
  *               billingCycle: { type: string, enum: [monthly, yearly], default: "monthly" }
- *               provider: { type: string, enum: [stripe, safepay, jazzcash, easypaisa, sadapay, nayapay] }
+ *               provider: { type: string, enum: [stripe, safepay, jazzcash, easypaisa, sadapay, nayapay, free, direct, manual] }
  *     responses:
  *       201:
- *         description: Subscription activated / checkout URL generated
+ *         description: Subscription activated successfully
+ * /subscriptions/activate:
+ *   post:
+ *     summary: Directly activate a subscription plan (alias of /subscriptions/checkout)
+ *     tags: [Subscriptions]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               planId: { type: string }
+ *               planSlug: { type: string, example: "customer-plus" }
+ *               billingCycle: { type: string, enum: [monthly, yearly], default: "monthly" }
+ *               provider: { type: string, enum: [stripe, safepay, jazzcash, easypaisa, sadapay, nayapay, free, direct, manual] }
+ *     responses:
+ *       201:
+ *         description: Subscription activated successfully
  * /subscriptions/cancel:
  *   post:
- *     summary: Cancel current active subscription at period end
+ *     summary: Cancel current active paid subscription at period end
  *     tags: [Subscriptions]
  *     security: [{ BearerAuth: [] }]
  *     responses:
@@ -56,6 +75,12 @@ subscriptionsRoutes.get("/subscriptions/plans", asyncHandler(subscriptionsContro
 subscriptionsRoutes.get("/subscriptions/me", requireAuth, asyncHandler(subscriptionsController.getMySubscription));
 subscriptionsRoutes.post(
   "/subscriptions/checkout",
+  requireAuth,
+  validate(subscriptionCheckoutSchema),
+  asyncHandler(subscriptionsController.checkoutSubscription)
+);
+subscriptionsRoutes.post(
+  "/subscriptions/activate",
   requireAuth,
   validate(subscriptionCheckoutSchema),
   asyncHandler(subscriptionsController.checkoutSubscription)

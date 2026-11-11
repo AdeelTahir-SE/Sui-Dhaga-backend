@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getDbClient } from "../../utils/resource-helper.js";
 import { AppError } from "../../utils/app-error.js";
 import { env } from "../../config/env.js";
+import { subscriptionsService } from "../subscriptions/subscriptions.service.js";
 
 import type { RegisterPayload, GoogleAuthPayload, CompleteProfilePayload } from "./auth.types.js";
 
@@ -38,6 +39,10 @@ export const authService = {
         .from("profiles")
         .update(profileUpdates)
         .eq("id", data.user.id);
+    }
+
+    if (data.user?.id) {
+      await subscriptionsService.ensureDefaultSubscription(data.user.id).catch(() => null);
     }
 
     return { user: data.user, session: data.session };
@@ -390,6 +395,10 @@ export const authService = {
         .select()
         .maybeSingle();
       profile = updatedProf || profile;
+    }
+
+    if (!userAlreadyExisted) {
+      await subscriptionsService.ensureDefaultSubscription(targetUser.id).catch(() => null);
     }
 
     // Check if account completion is required:

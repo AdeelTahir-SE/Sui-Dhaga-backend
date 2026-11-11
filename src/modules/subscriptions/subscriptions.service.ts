@@ -1,7 +1,9 @@
 import { getDbClient } from "../../utils/resource-helper.js";
 import { AppError } from "../../utils/app-error.js";
 import { isMissingTableError, throwDbError } from "../../utils/supabase-error.js";
-import { paymentService, type SupportedPaymentProvider } from "../../services/payment.service.js";
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NORMAL_PLAN_ALIASES = new Set(["normal", "free", "default", "starter", "basic"]);
 
 const FALLBACK_SUBSCRIPTION_PLANS = [
   {
@@ -58,6 +60,111 @@ const FALLBACK_SUBSCRIPTION_PLANS = [
   },
 ];
 
+const isUuid = (value: unknown): boolean => UUID_PATTERN.test(String(value || "").trim());
+
+const resolveNormalPlan = (plans: any[]) => {
+  const freePlan =
+    plans.find(
+      (p) =>
+        ["customer-free", "normal", "free"].includes(String(p.slug || "").toLowerCase()) &&
+        Number(p.price_monthly ?? 0) === 0
+    ) ||
+    plans.find((p) => Number(p.price_monthly ?? 0) === 0 && Number(p.price_yearly ?? 0) === 0);
+
+  return freePlan || plans[0] || FALLBACK_SUBSCRIPTION_PLANS[0];
+};
+
+const findPlanByIdentifier = (plans: any[], identifier: string) => {
+  const trimmed = identifier.trim();
+  const normalized = trimmed.toLowerCase();
+
+  const exactMatch = plans.find(
+    (p) => String(p.id) === trimmed || String(p.slug || "").toLowerCase() === normalized
+  );
+  if (exactMatch) return exactMatch;
+
+  if (NORMAL_PLAN_ALIASES.has(normalized)) {
+    return resolveNormalPlan(plans);
+  }
+
+  return plans.find((p) => {
+    const nameLower = String(p.name || "").toLowerCase();
+    return nameLower === normalized || nameLower.replace(/\s+/g, "-") === normalized;
+  });
+};
+
+const buildDefaultSubscriptionFallback = (userId: string, plan: any) => ({
+  id: null,
+  user_id: userId,
+  plan_id: plan.id,
+  billing_cycle: "monthly",
+  status: "active",
+  provider: "free",
+  amount: 0,
+  currency: String(plan.currency || "PKR"),
+  current_period_start: new Date().toISOString(),
+  current_period_end: null,
+  cancel_at_period_end: false,
+  is_default: true,
+  plan,
+});
+
+/**
+ * Deactivates any currently active subscriptions for the user and inserts the
+ * newly activated subscription row directly into `user_subscriptions`.
+ */
+async function activateSubscriptionRow(
+  client: ReturnType<typeof getDbClient>,
+  params: {
+    userId: string;
+    plan: any;
+    billingCycle: "monthly" | "yearly";
+    provider: string;
+    amount: number;
+  }
+) {
+  const { userId, plan, billingCycle, provider, amount } = params;
+  const now = new Date();
+  const periodDays = billingCycle === "yearly" ? 365 : 30;
+  const currentPeriodEnd =
+    amount === 0 ? null : new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000).toISOString();
+  const currency = String(plan.currency || "PKR");
+
+  // Expire prior active rows using a status allowed by the DB CHECK constraint
+  const { error: deactivateError } = await client
+    .from("user_subscriptions")
+    .update({ status: "expired" })
+    .eq("user_id", userId)
+    .eq("status", "active");
+
+  if (deactivateError) {
+    throwDbError(deactivateError, "user_subscriptions");
+  }
+
+  const { data: created, error } = await client
+    .from("user_subscriptions")
+    .insert({
+      user_id: userId,
+      plan_id: plan.id,
+      billing_cycle: billingCycle,
+      status: "active",
+      provider,
+      amount,
+      currency,
+      current_period_start: now.toISOString(),
+      current_period_end: currentPeriodEnd,
+      cancel_at_period_end: false,
+    })
+    .select("*, plan:subscription_plans(*)")
+    .single();
+
+  if (error) {
+    throwDbError(error, "user_subscriptions");
+  }
+
+  return created?.plan ? created : { ...created, plan };
+}
+
 export const subscriptionsService = {
   async getPlans() {
     const client = getDbClient();
@@ -75,38 +182,80 @@ export const subscriptionsService = {
     return data && data.length > 0 ? data : FALLBACK_SUBSCRIPTION_PLANS;
   },
 
-  async getMySubscription(userId: string) {
+  /**
+   * Ensures a user always has an active subscription, provisioning the default
+   * normal (free) plan in `user_subscriptions` if none is currently active.
+   */
+  async ensureDefaultSubscription(userId: string) {
+    if (!userId) return null;
     const client = getDbClient();
-    const { data, error } = await client
+
+    const { data: existing, error } = await client
       .from("user_subscriptions")
       .select("*, plan:subscription_plans(*)")
       .eq("user_id", userId)
+      .eq("status", "active")
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (error) {
-      if (isMissingTableError(error)) return null;
+    if (error && !isMissingTableError(error)) {
       throw new AppError(error.message, 400);
     }
 
-    return data ?? null;
+    if (existing) {
+      const periodEndMs = existing.current_period_end
+        ? new Date(existing.current_period_end).getTime()
+        : null;
+      if (!periodEndMs || periodEndMs > Date.now()) {
+        return existing;
+      }
+
+      // Expired paid period: transition row to expired before falling back to normal plan
+      await client
+        .from("user_subscriptions")
+        .update({ status: "expired" })
+        .eq("id", existing.id);
+    }
+
+    const plans = await this.getPlans();
+    const normalPlan = resolveNormalPlan(plans);
+
+    if (error || !isUuid(normalPlan.id)) {
+      return buildDefaultSubscriptionFallback(userId, normalPlan);
+    }
+
+    try {
+      return await activateSubscriptionRow(client, {
+        userId,
+        plan: normalPlan,
+        billingCycle: "monthly",
+        provider: "free",
+        amount: 0,
+      });
+    } catch {
+      return buildDefaultSubscriptionFallback(userId, normalPlan);
+    }
   },
 
+  async getMySubscription(userId: string) {
+    if (!userId) throw new AppError("Authentication required", 401);
+    return this.ensureDefaultSubscription(userId);
+  },
+
+  /**
+   * Activates the requested subscription plan directly in `user_subscriptions`
+   * without running external payment verification.
+   */
   async checkoutSubscription(userId: string, data: Record<string, unknown>) {
     if (!userId) throw new AppError("Authentication required", 401);
     const planIdentifier = String(
       data.planId || data.plan_id || data.planSlug || data.plan_slug || ""
     ).trim();
     const billingCycle = (data.billingCycle || data.billing_cycle || "monthly") as "monthly" | "yearly";
-    const provider = String(data.provider || "safepay") as SupportedPaymentProvider;
 
     const plans = await this.getPlans();
-    const matchedPlan = plans.find(
-      (p: any) =>
-        p.id === planIdentifier ||
-        String(p.slug).toLowerCase() === planIdentifier.toLowerCase()
-    );
+    const matchedPlan = findPlanByIdentifier(plans, planIdentifier);
 
     if (!matchedPlan) {
       throw new AppError("Subscription plan not found", 404);
@@ -116,55 +265,25 @@ export const subscriptionsService = {
       billingCycle === "yearly"
         ? Number((matchedPlan as any).price_yearly ?? 0)
         : Number((matchedPlan as any).price_monthly ?? 0);
-
-    const periodDays = billingCycle === "yearly" ? 365 : 30;
-    const now = new Date();
-    const periodEnd = new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000);
-
-    const session =
-      amount > 0
-        ? await paymentService.createCheckoutSession({
-            amount,
-            currency: (matchedPlan as any).currency || "PKR",
-            orderId: `sub-${matchedPlan.id}-${Date.now()}`,
-            provider,
-          })
-        : { checkoutUrl: null, sessionId: `free-${Date.now()}` };
+    const currency = String((matchedPlan as any).currency || "PKR");
+    const provider = String(data.provider || (amount === 0 ? "free" : "direct"));
 
     const client = getDbClient();
-    // Deactivate prior active subscriptions before inserting new active one
-    await client
-      .from("user_subscriptions")
-      .update({ status: "superseded" })
-      .eq("user_id", userId)
-      .eq("status", "active");
-
-    const { data: created, error } = await client
-      .from("user_subscriptions")
-      .insert({
-        user_id: userId,
-        plan_id: matchedPlan.id,
-        status: amount === 0 ? "active" : "active",
-        billing_cycle: billingCycle,
-        provider,
-        current_period_start: now.toISOString(),
-        current_period_end: periodEnd.toISOString(),
-        payment_reference: session.sessionId,
-      })
-      .select("*, plan:subscription_plans(*)")
-      .single();
-
-    if (error) {
-      throwDbError(error, "user_subscriptions");
-    }
+    const created = await activateSubscriptionRow(client, {
+      userId,
+      plan: matchedPlan,
+      billingCycle,
+      provider,
+      amount,
+    });
 
     return {
       subscription: created,
       plan: matchedPlan,
       amount,
-      currency: (matchedPlan as any).currency || "PKR",
-      checkoutUrl: session.checkoutUrl,
-      sessionId: session.sessionId,
+      currency,
+      status: "active",
+      checkoutUrl: null,
     };
   },
 
@@ -174,7 +293,7 @@ export const subscriptionsService = {
 
     const { data: active, error: findError } = await client
       .from("user_subscriptions")
-      .select("id")
+      .select("id, amount")
       .eq("user_id", userId)
       .eq("status", "active")
       .order("created_at", { ascending: false })
@@ -182,7 +301,9 @@ export const subscriptionsService = {
       .maybeSingle();
 
     if (findError) throwDbError(findError, "user_subscriptions");
-    if (!active) throw new AppError("No active subscription found", 404);
+    if (!active || Number(active.amount ?? 0) <= 0) {
+      throw new AppError("No active paid subscription found", 404);
+    }
 
     const { data: updated, error } = await client
       .from("user_subscriptions")

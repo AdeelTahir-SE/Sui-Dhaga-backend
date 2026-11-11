@@ -14,7 +14,7 @@ export const getMySubscription: RequestHandler = async (req, res) => {
 
 export const checkoutSubscription: RequestHandler = async (req, res) => {
   const result = await subscriptionsService.checkoutSubscription(req.user!.id, req.body);
-  success(res, result, "Subscription checkout processed successfully", 201);
+  success(res, result, "Subscription activated successfully", 201);
 };
 
 export const cancelSubscription: RequestHandler = async (req, res) => {
