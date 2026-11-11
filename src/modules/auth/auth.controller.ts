@@ -3,8 +3,20 @@ import { success } from "../../utils/api-response.js";
 import { authService } from "./auth.service.js";
 
 export const register: RequestHandler = async (req, res) => {
-  const result = await authService.register(req.body);
-  success(res, result, "Registration successful", 201);
+  const requestOrigin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+  const result = await authService.register(req.body, requestOrigin);
+  const message = result.confirmationResent
+    ? "Confirmation email re-sent. Please check your inbox."
+    : result.emailConfirmationRequired
+      ? "Registration successful. Please confirm your email address."
+      : "Registration successful";
+  success(res, result, message, 201);
+};
+
+export const resendConfirmation: RequestHandler = async (req, res) => {
+  const requestOrigin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+  const result = await authService.resendConfirmation(req.body, requestOrigin);
+  success(res, result, "Confirmation email sent successfully");
 };
 
 export const login: RequestHandler = async (req, res) => {
@@ -64,9 +76,17 @@ export const getGoogleAuthUrl: RequestHandler = (req, res) => {
   success(res, { url }, "Google auth URL fetched");
 };
 
-export const googleCallback: RequestHandler = (req, res) => {
+export const googleCallback: RequestHandler = async (req, res) => {
   const appRedirect = typeof req.query.appRedirect === "string" ? req.query.appRedirect : undefined;
-  const html = authService.renderGoogleCallbackHtml(appRedirect);
+  const tokenHash = typeof req.query.token_hash === "string" ? req.query.token_hash : undefined;
+  const type = typeof req.query.type === "string" ? req.query.type : undefined;
+
+  let verification: { accessToken?: string; refreshToken?: string; error?: string } | undefined;
+  if (tokenHash && type) {
+    verification = await authService.verifyCallbackTokenHash(tokenHash, type);
+  }
+
+  const html = authService.renderGoogleCallbackHtml(appRedirect, verification);
   res.setHeader("Content-Type", "text/html");
   res.send(html);
 };
@@ -75,5 +95,3 @@ export const changePassword: RequestHandler = async (req, res) => {
   const message = await authService.changePassword(req.user!.id, req.body);
   success(res, null, message);
 };
-
-

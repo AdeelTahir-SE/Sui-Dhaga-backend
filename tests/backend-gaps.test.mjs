@@ -264,6 +264,7 @@ describe("Sui-Dhaga Backend Gaps Fulfillment Suite", () => {
         "DELETE /api/v1/tailors/:tailorId/gallery",
         "POST /api/v1/reviews/:reviewId/reply",
         "POST /api/v1/auth/change-password",
+        "POST /api/v1/auth/resend-confirmation",
         "GET /api/v1/addresses",
         "POST /api/v1/addresses",
         "GET /api/v1/payment-methods",
@@ -1147,6 +1148,233 @@ describe("Sui-Dhaga Backend Gaps Fulfillment Suite", () => {
         if (prevAllowed === undefined) delete process.env.ALLOWED_ORIGINS;
         else process.env.ALLOWED_ORIGINS = prevAllowed;
       }
+    });
+  });
+
+  describe("Auth Signup, Confirmation & Callback Flows", () => {
+    it("accepts frontend register params, uses isolated auth client, and bridges web Origin redirects", async () => {
+      const fetchCalls = [];
+      const fetchMock = mock.method(globalThis, "fetch", async (input, init = {}) => {
+        const url = typeof input === "string" ? input : input.url;
+        const body = init.body ? JSON.parse(String(init.body)) : null;
+        fetchCalls.push({ url, method: init.method || "GET", body, headers: init.headers });
+
+        if (url.includes("/auth/v1/signup")) {
+          return new Response(
+            JSON.stringify({
+              id: "user-new-1",
+              aud: "authenticated",
+              role: "authenticated",
+              email: "ayesha@example.com",
+              confirmation_sent_at: "2026-11-11T18:00:00Z",
+              user_metadata: body?.data || {},
+              identities: [{ id: "ident-1", provider: "email" }],
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
+
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      });
+      cleanups.push(() => fetchMock.mock.restore());
+
+      let profileUpdated = null;
+      mockDb({
+        profiles: (state) => {
+          if (state.op === "update") profileUpdated = state.payload;
+          return { data: [] };
+        },
+        subscriptions: () => ({ data: { id: "sub-1", plan_id: "normal", status: "active" } }),
+      });
+
+      const res = await invokeApp(
+        "POST",
+        "/api/v1/auth/register",
+        {
+          email: "  Ayesha@Example.COM ",
+          password: "Password123!",
+          role: "Customer",
+          fullName: "Ayesha Khan",
+          phone: "+92 300-1234567",
+        },
+        { Origin: "https://sui-dhaga-website.vercel.app" }
+      );
+
+      assert.equal(res.status, 201);
+      assert.equal(res.body.data.emailConfirmationRequired, true);
+      assert.equal(res.body.data.confirmationResent, false);
+      assert.equal(profileUpdated?.full_name, "Ayesha Khan");
+      assert.equal(profileUpdated?.phone, "+92 300-1234567");
+
+      const signupCall = fetchCalls.find((c) => c.url.includes("/auth/v1/signup"));
+      assert.ok(signupCall, "Expected /auth/v1/signup request");
+      assert.equal(signupCall.body.email, "ayesha@example.com");
+      assert.equal(signupCall.body.data.full_name, "Ayesha Khan");
+      assert.equal(signupCall.body.data.phone, "+92 300-1234567");
+      const redirectToParam = new URL(signupCall.url).searchParams.get("redirect_to");
+      assert.equal(
+        redirectToParam,
+        "https://sui-dhaga-backend.vercel.app/api/v1/auth/callback?appRedirect=https%3A%2F%2Fsui-dhaga-website.vercel.app"
+      );
+
+      // Verify shared service-role singleton session remains unpolluted
+      const singletonSession = await supabase.auth.getSession();
+      assert.equal(singletonSession.data.session, null);
+    });
+
+    it("handles existing emails on register (resends if unconfirmed, 409 if confirmed) and resend-confirmation", async () => {
+      const fetchCalls = [];
+      const fetchMock = mock.method(globalThis, "fetch", async (input, init = {}) => {
+        const url = typeof input === "string" ? input : input.url;
+        const body = init.body ? JSON.parse(String(init.body)) : null;
+        fetchCalls.push({ url, body });
+
+        if (url.includes("/auth/v1/signup")) {
+          // Supabase obfuscates duplicate emails by returning identities: [] without sending mail
+          return new Response(
+            JSON.stringify({
+              id: "user-dup-1",
+              email: body.email,
+              identities: [],
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
+
+        if (url.includes("/auth/v1/resend")) {
+          return new Response(JSON.stringify({ message_id: "msg-resend-1" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      });
+      cleanups.push(() => fetchMock.mock.restore());
+
+      let confirmedFlag = null;
+      const listMock = mock.method(supabase.auth.admin, "listUsers", async () => ({
+        data: {
+          users: [
+            {
+              id: "user-dup-1",
+              email: "pending@example.com",
+              email_confirmed_at: confirmedFlag,
+            },
+          ],
+        },
+        error: null,
+      }));
+      cleanups.push(() => listMock.mock.restore());
+
+      // Unconfirmed duplicate re-signup automatically triggers resend confirmation
+      const resentOnRegister = await invokeApp("POST", "/api/v1/auth/register", {
+        email: "pending@example.com",
+        password: "Password123!",
+      });
+      assert.equal(resentOnRegister.status, 201);
+      assert.equal(resentOnRegister.body.data.confirmationResent, true);
+      assert.ok(fetchCalls.some((c) => c.url.includes("/auth/v1/resend")));
+
+      // Explicit resend-confirmation endpoint succeeds for unconfirmed user
+      const explicitResend = await invokeApp("POST", "/api/v1/auth/resend-confirmation", {
+        email: "pending@example.com",
+        emailRedirectTo: "https://sui-dhaga-website.vercel.app/verify",
+      });
+      assert.equal(explicitResend.status, 200);
+      assert.equal(
+        explicitResend.body.data.emailRedirectTo,
+        "https://sui-dhaga-website.vercel.app/verify"
+      );
+
+      // Confirmed duplicate re-signup returns 409 Conflict instead of silent success
+      confirmedFlag = "2026-11-10T12:00:00Z";
+      const conflictRes = await invokeApp("POST", "/api/v1/auth/register", {
+        email: "pending@example.com",
+        password: "Password123!",
+      });
+      assert.equal(conflictRes.status, 409);
+
+      // Explicit resend-confirmation for already confirmed user returns 400
+      const alreadyConfirmedResend = await invokeApp("POST", "/api/v1/auth/resend-confirmation", {
+        email: "pending@example.com",
+      });
+      assert.equal(alreadyConfirmedResend.status, 400);
+    });
+
+    it("surfaces 403 for unconfirmed login and verifies token_hash callbacks safely", async () => {
+      const fetchMock = mock.method(globalThis, "fetch", async (input, init = {}) => {
+        const url = typeof input === "string" ? input : input.url;
+        const body = init.body ? JSON.parse(String(init.body)) : null;
+
+        if (url.includes("/auth/v1/token")) {
+          return new Response(
+            JSON.stringify({
+              error: "email_not_confirmed",
+              error_code: "email_not_confirmed",
+              msg: "Email not confirmed",
+            }),
+            {
+              status: 400,
+              headers: {
+                "content-type": "application/json",
+                "x-sb-error-code": "email_not_confirmed",
+              },
+            }
+          );
+        }
+
+        if (url.includes("/auth/v1/verify")) {
+          assert.equal(body.token_hash, "hash-abc-123");
+          assert.equal(body.type, "signup");
+          return new Response(
+            JSON.stringify({
+              access_token: "verified-jwt-token",
+              refresh_token: "verified-refresh-token",
+              token_type: "bearer",
+              expires_in: 3600,
+              user: { id: "user-1", email: "user@example.com" },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
+
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      });
+      cleanups.push(() => fetchMock.mock.restore());
+
+      const unconfirmedLogin = await invokeApp("POST", "/api/v1/auth/login", {
+        email: "user@example.com",
+        password: "Password123!",
+      });
+      assert.equal(unconfirmedLogin.status, 403);
+      assert.match(unconfirmedLogin.body.message, /not confirmed/i);
+
+      const allowedConfirm = await invokeApp(
+        "GET",
+        "/api/v1/auth/confirm?token_hash=hash-abc-123&type=signup&appRedirect=https%3A%2F%2Fsui-dhaga-website.vercel.app"
+      );
+      assert.equal(allowedConfirm.status, 200);
+      assert.match(String(allowedConfirm.body), /verified-jwt-token/);
+      assert.match(String(allowedConfirm.body), /https:\/\/sui-dhaga-website\.vercel\.app/);
+
+      // Untrusted appRedirect must be dropped and fall back to suidhagamobile://auth/callback
+      const untrustedConfirm = await invokeApp(
+        "GET",
+        "/api/v1/auth/confirm?token_hash=hash-abc-123&type=signup&appRedirect=https%3A%2F%2Fevil.example.com"
+      );
+      assert.equal(untrustedConfirm.status, 200);
+      assert.ok(!String(untrustedConfirm.body).includes("evil.example.com"));
+      assert.match(String(untrustedConfirm.body), /suidhagamobile:\/\/auth\/callback/);
     });
   });
 });

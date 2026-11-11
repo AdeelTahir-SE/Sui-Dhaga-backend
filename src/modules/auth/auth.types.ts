@@ -5,7 +5,19 @@ export interface RegisterPayload {
   password: string;
   role?: UserRole;
   name?: string;
+  fullName?: string;
+  full_name?: string;
   phone?: string;
+  emailRedirectTo?: string;
+  redirectTo?: string;
+  appRedirect?: string;
+}
+
+export interface ResendConfirmationPayload {
+  email: string;
+  emailRedirectTo?: string;
+  redirectTo?: string;
+  appRedirect?: string;
 }
 
 export interface LoginPayload {
@@ -49,4 +61,3 @@ export interface CompleteProfilePayload {
   address?: string;
   specialties?: string[];
 }
-

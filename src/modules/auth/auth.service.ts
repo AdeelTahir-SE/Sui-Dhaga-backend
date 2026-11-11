@@ -1,41 +1,174 @@
-import { createClient } from "@supabase/supabase-js";
 import { getDbClient } from "../../utils/resource-helper.js";
 import { AppError } from "../../utils/app-error.js";
+import { createAuthClient } from "../../config/supabase.js";
+import { getAllowedOrigins } from "../../config/cors.js";
 import { env } from "../../config/env.js";
 import { subscriptionsService } from "../subscriptions/subscriptions.service.js";
 
-import type { RegisterPayload, GoogleAuthPayload, CompleteProfilePayload } from "./auth.types.js";
+import type {
+  RegisterPayload,
+  ResendConfirmationPayload,
+  GoogleAuthPayload,
+  CompleteProfilePayload,
+} from "./auth.types.js";
 
+const DEFAULT_CALLBACK_URL = "https://sui-dhaga-backend.vercel.app/api/v1/auth/callback";
+const MOBILE_APP_REDIRECT = "suidhagamobile://auth/callback";
+const ALLOWED_CALLBACK_OTP_TYPES = new Set([
+  "signup",
+  "invite",
+  "magiclink",
+  "recovery",
+  "email_change",
+  "email",
+]);
+
+type AuthDbClient = ReturnType<typeof getDbClient>;
+type CallbackOtpType = "signup" | "invite" | "magiclink" | "recovery" | "email_change" | "email";
+
+function getAuthClient() {
+  const client = createAuthClient();
+  if (!client) {
+    throw new AppError(
+      "Database/auth service unavailable. Please verify Supabase environment configuration.",
+      500
+    );
+  }
+  return client;
+}
+
+function getHttpStatus(error: unknown, fallback = 400): number {
+  const status = (error as { status?: unknown })?.status;
+  return typeof status === "number" && status >= 400 && status < 600 ? status : fallback;
+}
+
+function isAllowedRedirectTarget(candidate: string): boolean {
+  const trimmed = candidate.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith("suidhagamobile://")) return true;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+    const allowedOrigins = new Set<string>([
+      "https://sui-dhaga-backend.vercel.app",
+      ...getAllowedOrigins(),
+    ]);
+    return allowedOrigins.has(parsed.origin);
+  } catch {
+    return false;
+  }
+}
+
+function buildBridgeRedirectUrl(appRedirect: string): string {
+  return `${DEFAULT_CALLBACK_URL}?appRedirect=${encodeURIComponent(appRedirect)}`;
+}
+
+function resolveSignupRedirectUrl(
+  payload: { emailRedirectTo?: string; redirectTo?: string; appRedirect?: string },
+  requestOrigin?: string
+): string {
+  const explicitTarget = payload.emailRedirectTo?.trim() || payload.redirectTo?.trim();
+  if (explicitTarget && isAllowedRedirectTarget(explicitTarget)) {
+    if (explicitTarget.startsWith("suidhagamobile://")) {
+      return buildBridgeRedirectUrl(explicitTarget);
+    }
+    return explicitTarget;
+  }
+
+  const appRedirect = payload.appRedirect?.trim();
+  if (appRedirect && isAllowedRedirectTarget(appRedirect)) {
+    return buildBridgeRedirectUrl(appRedirect);
+  }
+
+  const trimmedOrigin = requestOrigin?.trim();
+  if (trimmedOrigin && isAllowedRedirectTarget(trimmedOrigin)) {
+    return buildBridgeRedirectUrl(trimmedOrigin);
+  }
+
+  return DEFAULT_CALLBACK_URL;
+}
+
+function sanitizeCallbackTarget(appRedirect?: string): string {
+  const trimmed = appRedirect?.trim();
+  if (trimmed && isAllowedRedirectTarget(trimmed)) {
+    return trimmed;
+  }
+  return MOBILE_APP_REDIRECT;
+}
+
+async function findAuthUserByEmail(dbClient: AuthDbClient, normalizedEmail: string) {
+  try {
+    for (let page = 1; page <= 10; page += 1) {
+      const { data, error } = await dbClient.auth.admin.listUsers({ page, perPage: 200 });
+      if (error || !data?.users?.length) return null;
+      const match = data.users.find((u) => u.email?.toLowerCase() === normalizedEmail);
+      if (match) return match;
+      if (data.users.length < 200) return null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 export const authService = {
-  async register(payload: RegisterPayload) {
-    const { email, password, role = "customer", name, phone } = payload;
+  async register(payload: RegisterPayload, requestOrigin?: string) {
+    const normalizedEmail = payload.email.trim().toLowerCase();
+    const role = payload.role ?? "customer";
+    const displayName = (payload.name || payload.fullName || payload.full_name)?.trim();
+    const phone = payload.phone?.trim();
+    const redirectUrl = resolveSignupRedirectUrl(payload, requestOrigin);
 
-    const client = getDbClient();
+    const authClient = getAuthClient();
+    const dbClient = getDbClient();
     const metadata: Record<string, unknown> = {
       role,
-      ...(name ? { name, full_name: name } : {}),
+      ...(displayName ? { name: displayName, full_name: displayName } : {}),
       ...(phone ? { phone } : {}),
     };
 
-    const redirectUrl = "https://sui-dhaga-backend.vercel.app/api/v1/auth/callback";
-
-    const { data, error } = await client.auth.signUp({
-      email,
-      password,
+    const { data, error } = await authClient.auth.signUp({
+      email: normalizedEmail,
+      password: payload.password,
       options: {
         data: metadata,
         emailRedirectTo: redirectUrl,
       },
     });
-    if (error) throw new AppError(error.message, 400);
+    if (error) throw new AppError(error.message, getHttpStatus(error, 400));
 
-    if (data.user?.id && (name || phone)) {
+    // When email confirmation is enabled, Supabase returns a user with identities: []
+    // and silently skips sending any email if the address is already registered.
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      const existingUser = await findAuthUserByEmail(dbClient, normalizedEmail);
+      if (existingUser?.email_confirmed_at || existingUser?.confirmed_at) {
+        throw new AppError("An account with this email already exists. Please sign in instead.", 409);
+      }
+
+      const { error: resendError } = await authClient.auth.resend({
+        type: "signup",
+        email: normalizedEmail,
+        options: { emailRedirectTo: redirectUrl },
+      });
+      if (resendError) {
+        throw new AppError(resendError.message, getHttpStatus(resendError, 400));
+      }
+
+      return {
+        user: existingUser ?? data.user,
+        session: null,
+        emailConfirmationRequired: true,
+        confirmationResent: true,
+        confirmationSentAt: new Date().toISOString(),
+      };
+    }
+
+    if (data.user?.id && (displayName || phone)) {
       const profileUpdates: Record<string, unknown> = {};
-      if (name) profileUpdates.full_name = name;
+      if (displayName) profileUpdates.full_name = displayName;
       if (phone) profileUpdates.phone = phone;
 
-      await client
+      await dbClient
         .from("profiles")
         .update(profileUpdates)
         .eq("id", data.user.id);
@@ -45,18 +178,65 @@ export const authService = {
       await subscriptionsService.ensureDefaultSubscription(data.user.id).catch(() => null);
     }
 
-    return { user: data.user, session: data.session };
+    return {
+      user: data.user,
+      session: data.session,
+      emailConfirmationRequired: !data.session,
+      confirmationResent: false,
+      confirmationSentAt: data.user?.confirmation_sent_at ?? null,
+    };
+  },
+
+  async resendConfirmation(payload: ResendConfirmationPayload, requestOrigin?: string) {
+    const normalizedEmail = payload.email.trim().toLowerCase();
+    const redirectUrl = resolveSignupRedirectUrl(payload, requestOrigin);
+    const dbClient = getDbClient();
+    const authClient = getAuthClient();
+
+    const existingUser = await findAuthUserByEmail(dbClient, normalizedEmail);
+    if (existingUser?.email_confirmed_at || existingUser?.confirmed_at) {
+      throw new AppError("This email address is already confirmed. Please sign in.", 400);
+    }
+
+    const { data, error } = await authClient.auth.resend({
+      type: "signup",
+      email: normalizedEmail,
+      options: { emailRedirectTo: redirectUrl },
+    });
+    if (error) {
+      throw new AppError(error.message, getHttpStatus(error, 400));
+    }
+
+    return {
+      email: normalizedEmail,
+      emailRedirectTo: redirectUrl,
+      messageId: data?.messageId ?? null,
+    };
   },
 
   async login(credentials: { email: string; password: string }) {
-    const client = getDbClient();
-    const { data, error } = await client.auth.signInWithPassword(credentials);
-    if (error) throw new AppError("Invalid email or password", 401);
+    const authClient = getAuthClient();
+    const dbClient = getDbClient();
+    const { data, error } = await authClient.auth.signInWithPassword({
+      email: credentials.email.trim().toLowerCase(),
+      password: credentials.password,
+    });
+    if (error) {
+      const isUnconfirmed =
+        error.code === "email_not_confirmed" || /email not confirmed/i.test(error.message);
+      if (isUnconfirmed) {
+        throw new AppError(
+          "Email not confirmed. Please check your inbox or request a new confirmation email.",
+          403
+        );
+      }
+      throw new AppError("Invalid email or password", 401);
+    }
 
     // Check if user profile exists in profiles table
     let profile: any = null;
     try {
-      const { data: prof } = await client
+      const { data: prof } = await dbClient
         .from("profiles")
         .select("*")
         .eq("id", data.user.id)
@@ -69,7 +249,7 @@ export const authService = {
     const userRole = profile?.role || data.user.user_metadata?.role || "customer";
     if (userRole === "tailor") {
       try {
-        const { data: tailor } = await client
+        const { data: tailor } = await dbClient
           .from("tailors")
           .select("id")
           .eq("user_id", data.user.id)
@@ -110,24 +290,24 @@ export const authService = {
   },
 
   async logout() {
-    const client = getDbClient();
-    const { error } = await client.auth.signOut();
-    if (error) throw new AppError(error.message, 400);
+    const authClient = getAuthClient();
+    const { error } = await authClient.auth.signOut();
+    if (error) throw new AppError(error.message, getHttpStatus(error, 400));
     return true;
   },
 
   async refreshToken(refreshToken: string) {
-    const client = getDbClient();
-    const { data, error } = await client.auth.refreshSession({
+    const authClient = getAuthClient();
+    const { data, error } = await authClient.auth.refreshSession({
       refresh_token: refreshToken,
     });
-    if (error) throw new AppError(error.message, 401);
+    if (error) throw new AppError(error.message, getHttpStatus(error, 401));
     return data;
   },
 
   async forgotPassword(email: string) {
-    const client = getDbClient();
-    const { error } = await client.auth.resetPasswordForEmail(email.trim());
+    const authClient = getAuthClient();
+    const { error } = await authClient.auth.resetPasswordForEmail(email.trim());
     if (error) {
       console.warn("Supabase resetPasswordForEmail notice:", error.message);
     }
@@ -158,7 +338,8 @@ export const authService = {
 
       // Try verifying OTP if email is provided
       if (email && email.trim()) {
-        const { data: otpData, error: otpError } = await client.auth.verifyOtp({
+        const authClient = getAuthClient();
+        const { data: otpData, error: otpError } = await authClient.auth.verifyOtp({
           email: email.trim(),
           token: trimmedToken,
           type: "recovery",
@@ -588,9 +769,47 @@ export const authService = {
     return `${env.SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(bridgeUrl)}`;
   },
 
-  renderGoogleCallbackHtml(appRedirect?: string) {
-    const defaultScheme = "suidhagamobile://auth/callback";
-    const target = appRedirect || defaultScheme;
+  async verifyCallbackTokenHash(
+    tokenHash: string,
+    type: string
+  ): Promise<{ accessToken?: string; refreshToken?: string; error?: string }> {
+    const normalizedHash = tokenHash.trim();
+    const normalizedType = type.trim().toLowerCase();
+
+    if (!normalizedHash || !ALLOWED_CALLBACK_OTP_TYPES.has(normalizedType)) {
+      return { error: "Invalid or unsupported verification link." };
+    }
+
+    try {
+      const authClient = getAuthClient();
+      const { data, error } = await authClient.auth.verifyOtp({
+        token_hash: normalizedHash,
+        type: normalizedType as CallbackOtpType,
+      });
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      return {
+        accessToken: data?.session?.access_token,
+        refreshToken: data?.session?.refresh_token,
+      };
+    } catch (err) {
+      return {
+        error: err instanceof Error ? err.message : "Failed to verify authentication token.",
+      };
+    }
+  },
+
+  renderGoogleCallbackHtml(
+    appRedirect?: string,
+    verification?: { accessToken?: string; refreshToken?: string; error?: string }
+  ) {
+    const target = sanitizeCallbackTarget(appRedirect);
+    const verifiedAccessToken = verification?.accessToken || "";
+    const verifiedRefreshToken = verification?.refreshToken || "";
+    const verifiedError = verification?.error || "";
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -653,8 +872,8 @@ export const authService = {
 <body>
   <div class="card">
     <div class="spinner" id="spinner"></div>
-    <h2>Redirecting to Sui Dhaga...</h2>
-    <p>Please wait while we complete your authentication, or tap the button below to return to the app.</p>
+    <h2 id="statusTitle">Redirecting to Sui Dhaga...</h2>
+    <p id="statusMessage">Please wait while we complete your authentication, or tap the button below to return to the app.</p>
     <div id="manualSection">
       <a id="deepLinkBtn" class="btn" href="#">Open Sui Dhaga App</a>
       <p class="hint">Tap above if the app does not open automatically</p>
@@ -666,14 +885,18 @@ export const authService = {
       var hashParams = new URLSearchParams(hash);
       var queryParams = new URLSearchParams(window.location.search);
 
-      var accessToken = hashParams.get('access_token') || queryParams.get('access_token') || hashParams.get('token') || queryParams.get('token');
-      var refreshToken = hashParams.get('refresh_token') || queryParams.get('refresh_token');
-      var code = queryParams.get('code') || hashParams.get('code');
-      var tokenHash = queryParams.get('token_hash') || hashParams.get('token_hash');
-      var type = queryParams.get('type') || hashParams.get('type');
-      var error = queryParams.get('error_description') || queryParams.get('error') || hashParams.get('error_description') || hashParams.get('error');
+      var verifiedAccessToken = ${JSON.stringify(verifiedAccessToken)};
+      var verifiedRefreshToken = ${JSON.stringify(verifiedRefreshToken)};
+      var verifiedError = ${JSON.stringify(verifiedError)};
 
-      var targetBase = queryParams.get('appRedirect') || ${JSON.stringify(target)};
+      var accessToken = verifiedAccessToken || hashParams.get('access_token') || queryParams.get('access_token') || hashParams.get('token') || queryParams.get('token');
+      var refreshToken = verifiedRefreshToken || hashParams.get('refresh_token') || queryParams.get('refresh_token');
+      var code = queryParams.get('code') || hashParams.get('code');
+      var tokenHash = verifiedAccessToken ? '' : (queryParams.get('token_hash') || hashParams.get('token_hash'));
+      var type = queryParams.get('type') || hashParams.get('type');
+      var error = verifiedError || queryParams.get('error_description') || queryParams.get('error') || hashParams.get('error_description') || hashParams.get('error');
+
+      var targetBase = ${JSON.stringify(target)};
 
       var sep = targetBase.indexOf('?') === -1 ? '?' : '&';
       var params = [];
@@ -685,6 +908,18 @@ export const authService = {
       if (error) params.push('error=' + encodeURIComponent(error));
 
       var finalUrl = targetBase + (params.length > 0 ? sep + params.join('&') : '');
+
+      var spinner = document.getElementById('spinner');
+      var titleEl = document.getElementById('statusTitle');
+      var msgEl = document.getElementById('statusMessage');
+      if (error) {
+        if (spinner) spinner.style.display = 'none';
+        if (titleEl) titleEl.textContent = 'Authentication Error';
+        if (msgEl) msgEl.textContent = error;
+      } else if (verifiedAccessToken && type === 'signup') {
+        if (titleEl) titleEl.textContent = 'Email Confirmed!';
+        if (msgEl) msgEl.textContent = 'Your email has been verified. Redirecting you back to Sui Dhaga...';
+      }
 
       var btn = document.getElementById('deepLinkBtn');
       if (btn) {
@@ -726,17 +961,7 @@ export const authService = {
       throw new AppError("User account email could not be verified", 404);
     }
 
-    // Verify current password using an isolated Supabase auth client to avoid mutating the service-role singleton
-    const supabaseKey = env.SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!env.SUPABASE_URL || !supabaseKey) {
-      throw new AppError("Supabase auth configuration is missing", 500);
-    }
-
-    const verifyClient = createClient(
-      env.SUPABASE_URL,
-      supabaseKey,
-      { auth: { persistSession: false, autoRefreshToken: false } }
-    );
+    const verifyClient = getAuthClient();
 
     const { error: signInError } = await verifyClient.auth.signInWithPassword({
       email: userLookup.user.email,

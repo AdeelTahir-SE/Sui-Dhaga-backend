@@ -6,6 +6,7 @@ import { asyncHandler } from "../../utils/async-handler.js";
 import * as authController from "./auth.controller.js";
 import {
   registerSchema,
+  resendConfirmationSchema,
   loginSchema,
   refreshTokenSchema,
   forgotPasswordSchema,
@@ -37,12 +38,42 @@ export const authRoutes = Router();
  *               password: { type: string, minLength: 8, example: "Password123!" }
  *               role: { type: string, enum: [customer, tailor], default: customer }
  *               name: { type: string, example: "Ayesha Khan" }
+ *               fullName: { type: string, example: "Ayesha Khan" }
  *               phone: { type: string, example: "+923001234567" }
+ *               redirectTo: { type: string, format: uri }
  *     responses:
  *       201:
  *         description: User registered successfully
  */
 authRoutes.post("/register", authLimiter, validate(registerSchema), asyncHandler(authController.register));
+
+/**
+ * @swagger
+ * /auth/resend-confirmation:
+ *   post:
+ *     summary: Resend signup email confirmation link
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email: { type: string, format: email, example: "user@example.com" }
+ *               redirectTo: { type: string, format: uri }
+ *     responses:
+ *       200:
+ *         description: Confirmation email sent successfully
+ */
+authRoutes.post(
+  "/resend-confirmation",
+  authLimiter,
+  validate(resendConfirmationSchema),
+  asyncHandler(authController.resendConfirmation)
+);
 
 /**
  * @swagger
@@ -300,5 +331,3 @@ authRoutes.post("/complete-profile", requireAuth, validate(completeProfileSchema
  *         description: Current password is incorrect
  */
 authRoutes.post("/change-password", requireAuth, authLimiter, validate(changePasswordSchema), asyncHandler(authController.changePassword));
-
-
