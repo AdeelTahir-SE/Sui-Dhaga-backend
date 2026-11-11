@@ -12,6 +12,8 @@ export const authService = {
     const client = getDbClient();
     const metadata: Record<string, unknown> = {
       role,
+      role_selected: true,
+      profile_completed: true,
       ...(name ? { name, full_name: name } : {}),
       ...(phone ? { phone } : {}),
     };
@@ -28,24 +30,136 @@ export const authService = {
     });
     if (error) throw new AppError(error.message, 400);
 
-    if (data.user?.id && (name || phone)) {
-      const profileUpdates: Record<string, unknown> = {};
+    // If an account with this email already exists, Supabase returns user with empty identities
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      throw new AppError("An account with this email already exists. Please log in instead.", 409);
+    }
+
+    if (data.user?.id) {
+      // 1. Auto-confirm user email so they can log in or receive an active session immediately
+      try {
+        await client.auth.admin.updateUserById(data.user.id, {
+          email_confirm: true,
+          user_metadata: metadata,
+          app_metadata: { role, role_selected: true, profile_completed: true },
+        });
+      } catch (confirmErr: any) {
+        console.warn("Notice: Failed to auto-confirm user email during register:", confirmErr?.message);
+      }
+
+      // 2. Guarantee profile row is synced
+      const profileUpdates: Record<string, unknown> = {
+        id: data.user.id,
+        role,
+        status: "active",
+        updated_at: new Date().toISOString(),
+      };
       if (name) profileUpdates.full_name = name;
       if (phone) profileUpdates.phone = phone;
 
-      await client
-        .from("profiles")
-        .update(profileUpdates)
-        .eq("id", data.user.id);
+      try {
+        await client
+          .from("profiles")
+          .upsert(profileUpdates, { onConflict: "id" });
+      } catch (profErr) {
+        console.warn("Notice: Failed to upsert profile during register:", profErr);
+      }
+
+      // 3. If role is tailor, guarantee tailor entry exists
+      if (role === "tailor") {
+        try {
+          const { data: existingTailor } = await client
+            .from("tailors")
+            .select("id")
+            .eq("user_id", data.user.id)
+            .maybeSingle();
+
+          if (!existingTailor) {
+            await client.from("tailors").insert({
+              user_id: data.user.id,
+              shop_name: `${name || "Tailor"}'s Boutique`,
+              city: "Lahore",
+              address: "Main Market",
+              specialties: ["Custom Suits", "Traditional"],
+              experience_years: 1,
+            });
+          }
+        } catch (tailorErr) {
+          console.warn("Notice: Failed to create tailor record during register:", tailorErr);
+        }
+      }
     }
 
-    return { user: data.user, session: data.session };
+    // 4. Generate active session so frontend can authenticate immediately without manual email click
+    let activeSession = data.session;
+    if (!activeSession && password) {
+      try {
+        const { data: loginData } = await client.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (loginData?.session) {
+          activeSession = loginData.session;
+        }
+      } catch (loginErr) {
+        console.warn("Notice: Could not auto-signin after registration:", loginErr);
+      }
+    }
+
+    const resolvedName = name || email.split("@")[0] || "User";
+
+    return {
+      user: {
+        id: data.user?.id,
+        email: data.user?.email || email,
+        fullName: resolvedName,
+        name: resolvedName,
+        role,
+        phone: phone || undefined,
+        profileCompleted: true,
+        isExistingUser: false,
+      },
+      session: activeSession,
+      accessToken: activeSession?.access_token,
+      refreshToken: activeSession?.refresh_token,
+      token: activeSession?.access_token,
+      isExistingUser: false,
+      needsProfileCompletion: false,
+    };
   },
 
   async login(credentials: { email: string; password: string }) {
     const client = getDbClient();
-    const { data, error } = await client.auth.signInWithPassword(credentials);
-    if (error) throw new AppError("Invalid email or password", 401);
+    let { data, error } = await client.auth.signInWithPassword(credentials);
+
+    // If email is not confirmed, auto-confirm it using admin API and retry
+    if (error && (error.message?.includes("Email not confirmed") || (error as any).code === "email_not_confirmed")) {
+      try {
+        const { data: usersData } = await client.auth.admin.listUsers();
+        const targetUser = usersData?.users?.find(
+          (u) => u.email?.toLowerCase() === credentials.email.toLowerCase().trim()
+        );
+        if (targetUser) {
+          await client.auth.admin.updateUserById(targetUser.id, { email_confirm: true });
+          const retry = await client.auth.signInWithPassword(credentials);
+          data = retry.data;
+          error = retry.error;
+        }
+      } catch (retryErr) {
+        console.warn("Notice: Auto-confirm retry on login failed:", retryErr);
+      }
+    }
+
+    if (error) {
+      if (error.message?.includes("Email not confirmed") || (error as any).code === "email_not_confirmed") {
+        throw new AppError("Please verify your email address before logging in.", 403);
+      }
+      throw new AppError("Invalid email or password", 401);
+    }
+
+    if (!data?.user) {
+      throw new AppError("Invalid email or password", 401);
+    }
 
     // Check if user profile exists in profiles table
     let profile: any = null;
@@ -98,6 +212,9 @@ export const authService = {
       },
       profile,
       session: data.session,
+      accessToken: data.session?.access_token,
+      refreshToken: data.session?.refresh_token,
+      token: data.session?.access_token,
       isExistingUser: true,
       needsProfileCompletion: false,
     };

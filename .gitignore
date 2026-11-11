@@ -24,6 +24,7 @@ measurement-service/data/
 measurement-service/models_shapy/
 measurement-service/models_smplx/
 measurement-service/vendor/
+measurement-service/SSP-3D
 *.zip
 *.tar.gz
 *.npz
@@ -31,4 +32,4 @@ measurement-service/vendor/
 *.ckpt
 *.pt
 *.pth
-*.bin
+*.bin

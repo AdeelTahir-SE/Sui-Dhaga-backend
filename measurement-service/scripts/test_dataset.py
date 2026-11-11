@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
-"""Test script to evaluate infer_direct pipeline against the Body Measurements Dataset.
+"""Test script to evaluate infer_direct pipeline against the SSP-3D benchmarking dataset.
 
-Iterates through dataset folders, loads front_img.jpg and meta.json / measurements.json,
-runs infer_direct from scripts/infer_image.py, and computes accuracy against ground truth.
+Loads images and ground truth SMPL shape labels from SSP-3D (ssp_3d/labels.npz),
+computes ground-truth dimensions via canonical SMPL-X model, runs infer_direct
+from scripts/infer_image.py, and calculates accuracy and error.
 
 Usage:
-    # Test all images in the dataset
-    python measurement-service/scripts/test_dataset.py
+    # Test first 5 samples in SSP-3D (default)
+    python measurement-service/scripts/test_dataset.py --limit 5
 
-    # Test only the first N images (e.g. 3)
-    python measurement-service/scripts/test_dataset.py --limit 3
+    # Test all 311 samples
+    python measurement-service/scripts/test_dataset.py --all
 
-    # Test a specific folder/id
+    # Test a specific sample by index or filename
     python measurement-service/scripts/test_dataset.py --id 0
+
+    # Save output report to JSON
+    python measurement-service/scripts/test_dataset.py --limit 5 --output output/ssp3d_test_report.json
 """
 
 from __future__ import annotations
@@ -22,67 +26,105 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import torch
 
 # Ensure measurement-service directory is on sys.path
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-# Import infer_direct from the original inference script
 from scripts.infer_image import infer_direct
+from app.core.config import settings
+from app.pipeline.canonical import GenderedSMPLXCanonical
+from app.pipeline.measure import VirtualMeasurements
+from app.pipeline.preprocess import QualityGateAndDetector
+from app.pipeline.shapy_infer import ShapyRegressor
 
 
-# Mapping from dataset json keys to pipeline output keys
-METRIC_MAPPING = {
-    "chest": "chest_circumference_cm",
-    "waist": "waist_circumference_cm",
-    "hips": "hips_circumference_cm",
-    "shoulder_width": "shoulder_width_cm",
-    "sleeve_length": "arm_length_cm",
-    "inseam": "leg_length_cm",
-    "neck": "neck_circumference_cm",
-    "thigh": "thigh_circumference_cm",
-}
+def _make_singleton(cls):
+    """Caches pipeline module instances so batch evaluation reuses loaded models in memory."""
+    orig_init = cls.__init__
+    instance = None
+
+    def init_fn(self, *args, **kwargs):
+        if hasattr(self, "_already_initialized"):
+            return
+        orig_init(self, *args, **kwargs)
+        self._already_initialized = True
+
+    def new_fn(c, *args, **kwargs):
+        nonlocal instance
+        if instance is None:
+            instance = super(cls, c).__new__(c)
+        return instance
+
+    cls.__new__ = new_fn
+    cls.__init__ = init_fn
 
 
-def parse_number(val: Any) -> Optional[float]:
-    """Safely extracts a float from values like '70.0_tbr', '159.0', 159, etc."""
-    if val is None:
-        return None
-    if isinstance(val, (int, float)):
-        return float(val)
-    match = re.search(r"[-+]?\d*\.?\d+", str(val))
-    return float(match.group(0)) if match else None
+# Enable singleton caching across batch inference
+_make_singleton(ShapyRegressor)
+_make_singleton(GenderedSMPLXCanonical)
+_make_singleton(VirtualMeasurements)
+_make_singleton(QualityGateAndDetector)
 
 
-def load_sample_meta(folder: Path) -> Optional[Dict[str, Any]]:
-    """Loads metadata from meta.json or measurements.json in the folder."""
-    for filename in ["meta.json", "measurements.json"]:
-        json_file = folder / filename
-        if json_file.exists():
-            with open(json_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-    # Check for any .json file in folder as fallback
-    json_files = list(folder.glob("*.json"))
-    if json_files:
-        with open(json_files[0], "r", encoding="utf-8") as f:
-            return json.load(f)
-    return None
+# Tailoring measurement keys to compare
+METRICS = [
+    ("chest", "Chest Circumference"),
+    ("waist", "Waist Circumference"),
+    ("hips", "Hips Circumference"),
+    ("shoulder_width", "Shoulder Width"),
+    ("sleeve_length", "Sleeve Length"),
+    ("inseam", "Inseam / Leg"),
+    ("thigh", "Thigh Circumference"),
+]
 
 
-def find_front_image(folder: Path) -> Optional[Path]:
-    """Finds front facing photo in folder."""
-    for name in ["front_img.jpg", "front_img.png", "front.jpg", "front.png"]:
-        p = folder / name
-        if p.exists():
-            return p
-    # Fallback: search for any image with 'front' in its filename
-    for ext in ["*.jpg", "*.jpeg", "*.png", "*.webp"]:
-        for p in folder.glob(ext):
-            if "front" in p.name.lower():
-                return p
-    return None
+def resolve_ssp3d_paths(dataset_dir: Path) -> Tuple[Path, Path]:
+    """Finds labels.npz and images/ directory within SSP-3D directory."""
+    candidates = [
+        dataset_dir / "ssp_3d",
+        dataset_dir,
+        BASE_DIR / "SSP-3D" / "ssp_3d",
+        BASE_DIR / "SSP-3D",
+    ]
+    for c in candidates:
+        labels_file = c / "labels.npz"
+        images_dir = c / "images"
+        if labels_file.exists() and images_dir.exists():
+            return labels_file, images_dir
+
+    raise FileNotFoundError(
+        f"Could not find labels.npz and images/ under {dataset_dir} or {BASE_DIR / 'SSP-3D'}"
+    )
+
+
+def compute_ground_truth_measurements(
+    canonical: GenderedSMPLXCanonical,
+    measurer: VirtualMeasurements,
+    gt_betas: np.ndarray,
+    gender: str,
+) -> Dict[str, float]:
+    """Generates ground truth anthropometric measurements from GT shape betas."""
+    betas_tensor = torch.from_numpy(gt_betas).float()
+    verts, faces = canonical(betas_tensor, gender=gender)
+    raw = measurer.measure(verts, faces)
+    # Convert meters to cm
+    return {
+        "height": round(raw["height"] * 100.0, 1),
+        "chest": round(raw["chest"] * 100.0, 1),
+        "waist": round(raw["waist"] * 100.0, 1),
+        "hips": round(raw["hips"] * 100.0, 1),
+        "shoulder_width": round(raw["shoulder_width"] * 100.0, 1),
+        "sleeve_length": round(raw["sleeve_length"] * 100.0, 1),
+        "inseam": round(raw["inseam"] * 100.0, 1),
+        "neck": round(raw["neck"] * 100.0, 1),
+        "thigh": round(raw["thigh"] * 100.0, 1),
+    }
 
 
 def run_evaluation(
@@ -91,132 +133,149 @@ def run_evaluation(
     target_id: Optional[str] = None,
     output_json: Optional[Path] = None,
 ):
-    files_dir = dataset_dir / "files" if (dataset_dir / "files").exists() else dataset_dir
+    # Locate SSP-3D files
+    labels_file, images_dir = resolve_ssp3d_paths(dataset_dir)
+    print("=" * 80)
+    print(" SUI DHAGA: TESTING INFERENCE PIPELINE ON SSP-3D BENCHMARK")
+    print(f" Dataset Path: {images_dir.parent}")
+    print("=" * 80)
 
-    if not files_dir.exists():
-        print(f"Error: Dataset directory not found at: {files_dir}")
-        sys.exit(1)
+    data = np.load(labels_file)
+    fnames = [str(f) for f in data["fnames"]]
+    shapes = data["shapes"]
+    genders_raw = [str(g).lower() for g in data["genders"]]
 
-    # Collect subject folders
-    folders = [f for f in files_dir.iterdir() if f.is_dir()]
-    # Sort folders numerically if digits, else alphabetically
-    folders.sort(key=lambda p: int(p.name) if p.name.isdigit() else p.name)
+    total_available = len(fnames)
+    print(f"Loaded SSP-3D dataset: {total_available} labeled subjects.\n")
 
+    # Filter by target ID if requested
+    indices = list(range(total_available))
     if target_id is not None:
-        folders = [f for f in folders if f.name == str(target_id)]
-        if not folders:
-            print(f"Error: Sample ID '{target_id}' not found in {files_dir}")
-            sys.exit(1)
+        if target_id.isdigit():
+            idx = int(target_id)
+            if 0 <= idx < total_available:
+                indices = [idx]
+            else:
+                print(f"Error: Sample index {target_id} out of range (0-{total_available - 1})")
+                sys.exit(1)
+        else:
+            matches = [i for i, f in enumerate(fnames) if target_id in f]
+            if matches:
+                indices = [matches[0]]
+            else:
+                print(f"Error: Filename matching '{target_id}' not found.")
+                sys.exit(1)
+    elif limit is not None and limit > 0:
+        indices = indices[:limit]
 
-    if limit is not None and limit > 0:
-        folders = folders[:limit]
+    # Initialize canonical and measurement components for ground truth extraction
+    print("Initializing Ground-Truth Reference Mesh Generators...")
+    canonical = GenderedSMPLXCanonical(model_path=settings.SMPLX_MODEL_PATH, device=settings.DEVICE)
+    measurer = VirtualMeasurements(landmarks_path=settings.LANDMARKS_PATH)
 
-    print("=" * 80)
-    print(f" TESTING INFERENCE PIPELINE ON DATASET ({len(folders)} samples)")
-    print(f" Dataset Path: {files_dir}")
-    print("=" * 80)
-
-    all_errors_cm: Dict[str, List[float]] = {k: [] for k in METRIC_MAPPING}
-    all_accuracies: Dict[str, List[float]] = {k: [] for k in METRIC_MAPPING}
+    all_errors_cm: Dict[str, List[float]] = {k: [] for k, _ in METRICS}
+    all_accuracies: Dict[str, List[float]] = {k: [] for k, _ in METRICS}
     results_summary: List[Dict[str, Any]] = []
 
     processed = 0
     failed = 0
 
-    for idx, folder in enumerate(folders, start=1):
-        sample_id = folder.name
-        front_img = find_front_image(folder)
-        meta = load_sample_meta(folder)
+    for step_num, i in enumerate(indices, start=1):
+        fname = fnames[i]
+        img_path = images_dir / fname
+        gender = "female" if genders_raw[i] == "f" else "male"
+        gt_betas = shapes[i]
 
-        if not front_img or not meta:
-            print(f"\n[{idx}/{len(folders)}] Skipping {sample_id}: Missing image or metadata JSON.")
+        if not img_path.exists():
+            print(f"[{step_num}/{len(indices)}] Skipping {fname}: Image file not found.")
             failed += 1
             continue
-
-        height_cm = parse_number(meta.get("height"))
-        gender = str(meta.get("gender", "neutral")).strip().lower()
-
-        if not height_cm:
-            print(f"\n[{idx}/{len(folders)}] Skipping {sample_id}: Height missing in metadata.")
-            failed += 1
-            continue
-
-        print(f"\n[{idx}/{len(folders)}] Processing Subject: {sample_id}")
-        print(f"  Image: {front_img.name} | Stature: {height_cm} cm | Gender: {gender}")
 
         try:
-            # Call original infer_direct script
+            # 1. Compute ground truth dimensions from SMPL shape parameter labels
+            gt_meas = compute_ground_truth_measurements(canonical, measurer, gt_betas, gender)
+            gt_height_cm = gt_meas["height"]
+
+            print(f"\n[{step_num}/{len(indices)}] Subject #{i}: {fname}")
+            print(f"  Gender: {gender.upper()} | Ground-Truth Stature: {gt_height_cm:.1f} cm")
+
+            # 2. Run inference via the pipeline's infer_direct
             result = infer_direct(
-                image_path=front_img,
-                height_cm=height_cm,
+                image_path=img_path,
+                height_cm=gt_height_cm,
                 gender=gender,
             )
 
             pred_cm = result.get("measurements_cm", {})
+
             sample_report: Dict[str, Any] = {
-                "id": sample_id,
+                "index": i,
+                "filename": fname,
                 "gender": gender,
-                "height_cm": height_cm,
-                "metrics": {},
+                "gt_height_cm": gt_height_cm,
+                "measurements": {},
             }
 
             print("-" * 75)
-            print(f"{'Metric':<18} | {'GT (cm)':<10} | {'Pred (cm)':<10} | {'Error (cm)':<12} | {'Accuracy (%)':<12}")
+            print(f"{'Metric':<20} | {'GT (cm)':<10} | {'Pred (cm)':<10} | {'Error (cm)':<12} | {'Accuracy (%)':<12}")
             print("-" * 75)
 
-            for pred_key, gt_key in METRIC_MAPPING.items():
-                gt_val = parse_number(meta.get(gt_key))
-                pred_val = pred_cm.get(pred_key)
+            for key, label in METRICS:
+                gt_val = gt_meas.get(key)
+                pred_val = pred_cm.get(key)
 
                 if gt_val is not None and pred_val is not None and gt_val > 0:
                     err_cm = abs(pred_val - gt_val)
-                    # Accuracy % = max(0, 100 - (abs(pred - gt) / gt * 100))
                     pct_err = (err_cm / gt_val) * 100.0
                     acc_pct = max(0.0, 100.0 - pct_err)
 
-                    all_errors_cm[pred_key].append(err_cm)
-                    all_accuracies[pred_key].append(acc_pct)
+                    all_errors_cm[key].append(err_cm)
+                    all_accuracies[key].append(acc_pct)
 
-                    sample_report["metrics"][pred_key] = {
-                        "gt_cm": round(gt_val, 1),
-                        "pred_cm": round(pred_val, 1),
+                    sample_report["measurements"][key] = {
+                        "gt_cm": gt_val,
+                        "pred_cm": pred_val,
                         "error_cm": round(err_cm, 1),
                         "accuracy_pct": round(acc_pct, 1),
                     }
 
-                    label = pred_key.replace("_", " ").title()
-                    print(f"{label:<18} | {gt_val:>8.1f}   | {pred_val:>8.1f}   | {err_cm:>8.1f} cm  | {acc_pct:>8.1f}%")
+                    print(f"{label:<20} | {gt_val:>8.1f}   | {pred_val:>8.1f}   | {err_cm:>8.1f} cm  | {acc_pct:>8.1f}%")
 
             print("-" * 75)
             processed += 1
             results_summary.append(sample_report)
 
+            # Flush intermediate progress to JSON every 5 samples
+            if output_json and processed % 5 == 0:
+                output_json.parent.mkdir(parents=True, exist_ok=True)
+                with open(output_json, "w", encoding="utf-8") as f:
+                    json.dump({"processed": processed, "total": len(indices), "samples": results_summary}, f, indent=2)
+
         except Exception as e:
-            print(f"  [ERROR] Failed to run inference on {sample_id}: {e}")
+            print(f"  [ERROR] Pipeline inference failed on {fname}: {e}")
             failed += 1
 
     # Print Aggregate Summary Table
     print("\n" + "=" * 80)
-    print(" OVERALL ACCURACY AND ERROR SUMMARY ACROSS DATASET")
+    print(" OVERALL ACCURACY AND ERROR SUMMARY ON SSP-3D BENCHMARK")
     print("=" * 80)
-    print(f"{'Metric':<20} | {'Samples':<8} | {'MAE (cm)':<12} | {'MAE (mm)':<12} | {'Avg Accuracy':<14}")
+    print(f"{'Metric':<22} | {'Samples':<8} | {'MAE (cm)':<12} | {'MAE (mm)':<12} | {'Avg Accuracy':<14}")
     print("-" * 80)
 
     overall_mae_cm: Dict[str, float] = {}
     overall_acc: Dict[str, float] = {}
 
-    for metric_key in METRIC_MAPPING:
-        errs = all_errors_cm[metric_key]
-        accs = all_accuracies[metric_key]
+    for key, label in METRICS:
+        errs = all_errors_cm[key]
+        accs = all_accuracies[key]
         if errs:
             mean_err_cm = sum(errs) / len(errs)
             mean_err_mm = mean_err_cm * 10.0
             mean_acc = sum(accs) / len(accs)
-            overall_mae_cm[metric_key] = round(mean_err_cm, 2)
-            overall_acc[metric_key] = round(mean_acc, 2)
+            overall_mae_cm[key] = round(mean_err_cm, 2)
+            overall_acc[key] = round(mean_acc, 2)
 
-            label = metric_key.replace("_", " ").title()
-            print(f"{label:<20} | {len(errs):<8} | {mean_err_cm:>8.2f} cm  | {mean_err_mm:>8.1f} mm  | {mean_acc:>10.2f}%")
+            print(f"{label:<22} | {len(errs):<8} | {mean_err_cm:>8.2f} cm  | {mean_err_mm:>8.1f} mm  | {mean_acc:>10.2f}%")
 
     print("=" * 80)
     print(f"Completed: {processed} samples | Skipped/Failed: {failed} samples")
@@ -224,6 +283,8 @@ def run_evaluation(
     if output_json:
         output_json.parent.mkdir(parents=True, exist_ok=True)
         final_data = {
+            "dataset": "SSP-3D",
+            "total_samples": len(indices),
             "processed": processed,
             "failed": failed,
             "overall_mae_cm": overall_mae_cm,
@@ -232,42 +293,49 @@ def run_evaluation(
         }
         with open(output_json, "w", encoding="utf-8") as f:
             json.dump(final_data, f, indent=2)
-        print(f"\nDetailed evaluation report saved to: {output_json}")
+        print(f"\nEvaluation report saved to: {output_json}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Test the original infer.py pipeline against the Body Measurements Dataset."
+        description="Test the model pipeline (infer_image.py) on the SSP-3D Benchmark Dataset."
     )
     parser.add_argument(
         "--dataset-dir",
         type=Path,
-        default=BASE_DIR / "body-measurements-dataset",
-        help="Path to body measurements dataset root (contains files/ folder)",
+        default=BASE_DIR / "SSP-3D",
+        help="Path to SSP-3D root directory (containing ssp_3d/labels.npz and images/)",
     )
     parser.add_argument(
         "--limit",
         type=int,
-        default=None,
-        help="Limit number of samples to evaluate (e.g. --limit 3 for quick test)",
+        default=5,
+        help="Limit number of samples to evaluate (default: 5 for quick check; use --all to run all)",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Evaluate all 311 samples in the dataset",
     )
     parser.add_argument(
         "--id",
         type=str,
         default=None,
-        help="Evaluate only a specific subject ID folder (e.g. --id 0)",
+        help="Evaluate a specific sample by index (0-310) or substring filename",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=None,
+        default=Path("output") / "ssp3d_test_report.json",
         help="Optional path to save JSON evaluation report",
     )
 
     args = parser.parse_args()
+    limit = None if args.all else args.limit
+
     run_evaluation(
         dataset_dir=args.dataset_dir,
-        limit=args.limit,
+        limit=limit,
         target_id=args.id,
         output_json=args.output,
     )

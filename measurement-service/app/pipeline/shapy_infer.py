@@ -239,33 +239,33 @@ class ShapyRegressor(nn.Module):
             if tensor.shape[-2:] != (256, 256):
                 tensor = F.interpolate(tensor, size=(256, 256), mode="bilinear", align_corners=False)
 
-            out = self.official_model(tensor, compute_losses=False)
-            last_stage = out.get("stage_02", out.get(out.get("stage_keys", ["stage_00"])[-1]))
+            with torch.no_grad():
+                out = self.official_model(tensor, compute_losses=False)
+                last_stage = out.get("stage_02", out.get(out.get("stage_keys", ["stage_00"])[-1]))
 
-            # Predicted shape betas (1, 10)
-            pred_betas = last_stage["betas"][0].detach().cpu().numpy()[:self.num_betas]
+                # Predicted shape betas (1, 10)
+                pred_betas = last_stage["betas"][0].detach().cpu().numpy()[:self.num_betas]
 
-            # Predicted body pose: (1, 21, 3, 3) rotation matrices -> convert to (63,) angle-axis
-            body_pose_mats = last_stage["body_pose"][0].detach().cpu().numpy()
-            aa_body_list = []
-            for i in range(body_pose_mats.shape[0]):
-                aa, _ = cv2.Rodrigues(body_pose_mats[i])
-                aa_body_list.append(aa.flatten())
-            pred_body_pose = np.concatenate(aa_body_list)
+                # Predicted body pose: (1, 21, 3, 3) rotation matrices -> convert to (63,) angle-axis
+                body_pose_mats = last_stage["body_pose"][0].detach().cpu().numpy()
+                aa_body_list = []
+                for i in range(body_pose_mats.shape[0]):
+                    aa, _ = cv2.Rodrigues(body_pose_mats[i])
+                    aa_body_list.append(aa.flatten())
+                pred_body_pose = np.concatenate(aa_body_list)
 
-            # Predicted global orient: (1, 1, 3, 3) rotation matrix -> convert to (3,) angle-axis
-            global_rot_mat = last_stage["global_rot"][0, 0].detach().cpu().numpy()
-            pred_global_orient, _ = cv2.Rodrigues(global_rot_mat)
-            pred_global_orient = pred_global_orient.flatten()
+                # Predicted global orient: (1, 1, 3, 3) rotation matrix -> convert to (3,) angle-axis
+                global_rot_mat = last_stage["global_rot"][0, 0].detach().cpu().numpy()
+                pred_global_orient, _ = cv2.Rodrigues(global_rot_mat)
+                pred_global_orient = pred_global_orient.flatten()
 
-            # Camera parameters
-            cam_params = out.get("camera_parameters")
-            if cam_params is not None:
-                camera_scale = float(cam_params.scale[0, 0].detach().cpu().numpy())
-                camera_transl = cam_params.translation[0].detach().cpu().numpy()
-            else:
+                # Camera parameters
+                cam_params = out.get("camera_parameters")
                 camera_scale = 1.0
                 camera_transl = np.zeros(2, dtype=np.float32)
+                if cam_params is not None:
+                    camera_scale = float(cam_params.scale[0, 0].detach().cpu().numpy())
+                    camera_transl = cam_params.translation[0].detach().cpu().numpy()
 
             return {
                 "betas": pred_betas,
