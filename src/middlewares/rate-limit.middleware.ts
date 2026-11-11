@@ -3,17 +3,17 @@ import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../utils/app-error.js";
 import { env } from "../config/env.js";
 
-
 const isDev = env.NODE_ENV === "development" || env.NODE_ENV === "test";
+const skipPreflightOrDev = (req: Request) => isDev || req.method === "OPTIONS";
 
 /**
  * Standard rate limiter applied to all API endpoints
- * 200 requests per 15 minutes window in production (skipped in development)
+ * 200 requests per 15 minutes window in production (skipped in development and OPTIONS preflight)
  */
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
-  skip: () => isDev,
+  skip: skipPreflightOrDev,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -27,12 +27,12 @@ export const apiLimiter = rateLimit({
 
 /**
  * Strict rate limiter for authentication routes (login, register, forgot-password)
- * 15 requests per 15 minutes window in production (skipped in development)
+ * 15 requests per 15 minutes window in production (skipped in development and OPTIONS preflight)
  */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 15,
-  skip: () => isDev,
+  skip: skipPreflightOrDev,
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
@@ -47,12 +47,12 @@ export const authLimiter = rateLimit({
 
 /**
  * Rate limiter for heavy AI generation routes (text-to-design, image-to-design, sketch-to-design)
- * 20 generations per 10 minutes per IP in production (skipped in development)
+ * 20 generations per 10 minutes per IP in production (skipped in development and OPTIONS preflight)
  */
 export const aiLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 20,
-  skip: () => isDev,
+  skip: skipPreflightOrDev,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

@@ -9,7 +9,7 @@ process.env.SUPABASE_URL = process.env.SUPABASE_URL || "https://example.supabase
 process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "service-role-test-key";
 process.env.SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "anon-test-key";
 
-const [{ app }, { apiRoutes }, { supabase }, { emailService }, { buildTechPackPdfBuffer }, { aiService }, { isMissingTableError, isMissingColumnError }] =
+const [{ app }, { apiRoutes }, { supabase }, { emailService }, { buildTechPackPdfBuffer }, { aiService }, { isMissingTableError, isMissingColumnError }, { getAllowedOrigins }] =
   await Promise.all([
     import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/app.js").href),
     import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/routes/index.js").href),
@@ -18,6 +18,7 @@ const [{ app }, { apiRoutes }, { supabase }, { emailService }, { buildTechPackPd
     import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/utils/pdf-generator.js").href),
     import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/services/ai.service.js").href),
     import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/utils/supabase-error.js").href),
+    import(pathToFileURL("d:/Projects/Sui-Dhaga-backend/dist/config/cors.js").href),
   ]);
 
 class MockSocket extends Duplex {
@@ -42,12 +43,15 @@ async function invokeApp(method, path, bodyObj = undefined, headers = {}) {
   const req = new http.IncomingMessage(socket);
   req.method = method;
   req.url = path;
+  const normalizedHeaders = Object.fromEntries(
+    Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])
+  );
   req.headers = {
     host: "localhost",
     ...(rawBody
       ? { "content-type": "application/json", "content-length": String(rawBody.length) }
       : {}),
-    ...headers,
+    ...normalizedHeaders,
   };
   if (rawBody) req.push(rawBody);
   req.push(null);
@@ -927,6 +931,98 @@ describe("Sui-Dhaga Backend Gaps Fulfillment Suite", () => {
       const blogRes = await invokeApp("GET", "/api/v1/blog/bridal-fabrics-pakistan-seasonal-guide");
       assert.equal(blogRes.status, 200);
       assert.equal(blogRes.body.data.slug, "bridal-fabrics-pakistan-seasonal-guide");
+    });
+  });
+
+  describe("CORS Configuration & Preflight", () => {
+    it("allows preflight OPTIONS for production website and localhost:3000 without redirects or auth", async () => {
+      const prodPreflight = await invokeApp("OPTIONS", "/api/v1/auth/register", undefined, {
+        Origin: "https://sui-dhaga-website.vercel.app",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+      });
+      assert.equal(prodPreflight.status, 204);
+      assert.equal(
+        prodPreflight.headers["access-control-allow-origin"],
+        "https://sui-dhaga-website.vercel.app"
+      );
+      assert.equal(prodPreflight.headers["access-control-allow-credentials"], "true");
+      assert.match(String(prodPreflight.headers["access-control-allow-methods"]), /POST/);
+      assert.match(String(prodPreflight.headers["access-control-allow-headers"]), /Content-Type/i);
+
+      const localPreflight = await invokeApp("OPTIONS", "/api/v1/auth/register", undefined, {
+        Origin: "http://localhost:3000",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "authorization,content-type",
+      });
+      assert.equal(localPreflight.status, 204);
+      assert.equal(localPreflight.headers["access-control-allow-origin"], "http://localhost:3000");
+
+      const blockedPreflight = await invokeApp("OPTIONS", "/api/v1/auth/register", undefined, {
+        Origin: "https://untrusted.example.com",
+        "Access-Control-Request-Method": "POST",
+      });
+      assert.ok([200, 204].includes(blockedPreflight.status));
+      assert.equal(blockedPreflight.headers["access-control-allow-origin"], undefined);
+    });
+
+    it("includes CORS headers on 4xx and 5xx error responses and normalizes ALLOWED_ORIGINS", async () => {
+      const validationErr = await invokeApp(
+        "POST",
+        "/api/v1/auth/register",
+        { email: "not-an-email" },
+        { Origin: "https://sui-dhaga-website.vercel.app" }
+      );
+      assert.equal(validationErr.status, 422);
+      assert.equal(
+        validationErr.headers["access-control-allow-origin"],
+        "https://sui-dhaga-website.vercel.app"
+      );
+      assert.equal(validationErr.headers["access-control-allow-credentials"], "true");
+
+      const authErr = await invokeApp("GET", "/api/v1/users/me", undefined, {
+        Origin: "https://sui-dhaga-website.vercel.app",
+      });
+      assert.equal(authErr.status, 401);
+      assert.equal(
+        authErr.headers["access-control-allow-origin"],
+        "https://sui-dhaga-website.vercel.app"
+      );
+
+      const notFoundErr = await invokeApp("GET", "/api/v1/does-not-exist", undefined, {
+        Origin: "https://sui-dhaga-website.vercel.app",
+      });
+      assert.equal(notFoundErr.status, 404);
+      assert.equal(
+        notFoundErr.headers["access-control-allow-origin"],
+        "https://sui-dhaga-website.vercel.app"
+      );
+
+      const fromThrowMock = mock.method(supabase, "from", () => {
+        throw new Error("Simulated unexpected database outage");
+      });
+      cleanups.push(() => fromThrowMock.mock.restore());
+      const serverErr = await invokeApp("GET", "/api/v1/tailors", undefined, {
+        Origin: "https://sui-dhaga-website.vercel.app",
+      });
+      assert.equal(serverErr.status, 500);
+      assert.equal(
+        serverErr.headers["access-control-allow-origin"],
+        "https://sui-dhaga-website.vercel.app"
+      );
+      assert.equal(serverErr.headers["access-control-allow-credentials"], "true");
+
+      const prevAllowed = process.env.ALLOWED_ORIGINS;
+      try {
+        process.env.ALLOWED_ORIGINS = "https://sui-dhaga-website.vercel.app/, *, http://localhost:3000/";
+        assert.deepEqual(getAllowedOrigins(), [
+          "https://sui-dhaga-website.vercel.app",
+          "http://localhost:3000",
+        ]);
+      } finally {
+        if (prevAllowed === undefined) delete process.env.ALLOWED_ORIGINS;
+        else process.env.ALLOWED_ORIGINS = prevAllowed;
+      }
     });
   });
 });

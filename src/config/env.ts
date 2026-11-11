@@ -7,7 +7,8 @@ const optionalEmail = z.string().email().optional().or(z.literal(""));
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
-  CLIENT_ORIGINS: z.string().default("http://localhost:3000"),
+  ALLOWED_ORIGINS: z.string().default("https://sui-dhaga-website.vercel.app,http://localhost:3000"),
+  CLIENT_ORIGINS: z.string().optional(),
   SUPABASE_URL: optionalUrl,
   SUPABASE_ANON_KEY: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),

@@ -15,9 +15,15 @@ export const app = express();
 app.set("trust proxy", 1);
 app.set("etag", "strong");
 
+// Register CORS first so preflight OPTIONS and all downstream routes/errors carry CORS headers
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
 // Middleware
 app.use(
   (helmet as any)({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
@@ -48,7 +54,7 @@ app.use(
     }
   })
 );
-app.use(cors(corsOptions));
+
 app.use(express.json({ limit: "10mb" }));
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 
