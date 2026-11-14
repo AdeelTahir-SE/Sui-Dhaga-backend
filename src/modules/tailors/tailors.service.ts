@@ -520,6 +520,16 @@ export const tailorsService = {
 
     if (error) throw new AppError(error.message, 400);
 
+    // Promote user's role to 'tailor' in profiles table so they immediately have tailor capabilities
+    try {
+      await client.from("profiles").update({ role: "tailor" }).eq("id", userId);
+      if (typeof client?.auth?.admin?.updateUserById === "function") {
+        await client.auth.admin.updateUserById(userId, { user_metadata: { role: "tailor" } });
+      }
+    } catch (roleErr) {
+      console.warn("Could not promote profile role to tailor:", roleErr);
+    }
+
     // Sync stitching price to tailor_services catalog
     if (created?.id && startingPriceNum && startingPriceNum > 0) {
       try {

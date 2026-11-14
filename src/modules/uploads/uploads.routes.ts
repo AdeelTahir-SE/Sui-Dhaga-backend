@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
-import { uploadFlexibleSingleImage } from "../../middlewares/upload.middleware.js";
+import {
+  uploadFlexibleSingleImage,
+  uploadMultipleImages,
+  uploadDocument,
+} from "../../middlewares/upload.middleware.js";
 import { MAX_IMAGE_BYTES } from "../../utils/image-upload.helper.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as uploadsController from "./uploads.controller.js";
@@ -44,6 +48,85 @@ export const uploadsRoutes = Router();
  *         description: Image uploaded successfully
  */
 uploadsRoutes.post("/uploads/image", requireAuth, uploadFlexibleSingleImage(MAX_IMAGE_BYTES), asyncHandler(uploadsController.uploadImage));
+
+/**
+ * @openapi
+ * /uploads/images:
+ *   post:
+ *     summary: Batch upload multiple image files
+ *     tags: [Uploads]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *     responses:
+ *       201:
+ *         description: Images uploaded successfully
+ */
+uploadsRoutes.post(
+  "/uploads/images",
+  requireAuth,
+  uploadMultipleImages("images", 10),
+  asyncHandler(uploadsController.uploadImages)
+);
+
+/**
+ * @openapi
+ * /uploads/file:
+ *   post:
+ *     summary: Upload document or PDF file
+ *     tags: [Uploads]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       201:
+ *         description: File uploaded successfully
+ */
+uploadsRoutes.post(
+  "/uploads/file",
+  requireAuth,
+  uploadDocument("file", 15 * 1024 * 1024),
+  asyncHandler(uploadsController.uploadFile)
+);
+
+/**
+ * @openapi
+ * /uploads/{fileId}:
+ *   delete:
+ *     summary: Delete uploaded file
+ *     tags: [Uploads]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: fileId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: File deleted successfully
+ */
+uploadsRoutes.delete("/uploads/:fileId", requireAuth, asyncHandler(uploadsController.deleteFile));
 
 
 

@@ -328,7 +328,29 @@ export const uploadTailorBanner: RequestHandler = async (req, res) => {
 };
 
 export const compareTailors: RequestHandler = async (req, res) => {
-  success(res, { comparison: req.body }, "Tailors compared successfully");
+  const rawIds = req.body?.tailorIds || req.body?.ids || req.query?.ids || req.query?.tailorIds;
+  const ids: string[] = Array.isArray(rawIds)
+    ? rawIds.map(String)
+    : typeof rawIds === "string"
+      ? rawIds.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+
+  const comparison = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        return await tailorsService.getTailorById(id);
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  const matchedTailors = comparison.filter(Boolean);
+  success(
+    res,
+    { tailors: matchedTailors, count: matchedTailors.length },
+    "Tailors compared successfully"
+  );
 };
 
 export const addTailorService: RequestHandler = async (req, res) => {

@@ -23,8 +23,39 @@ export const reviewsRoutes = Router();
  *     responses:
  *       200:
  *         description: List of reviews retrieved successfully
+ *   post:
+ *     summary: Submit a direct review for a tailor
+ *     tags: [Reviews]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [rating]
+ *             properties:
+ *               rating: { type: integer, minimum: 1, maximum: 5, example: 5 }
+ *               comment: { type: string, example: "Excellent stitching and timely delivery." }
+ *               images: { type: array, items: { type: string } }
+ *     responses:
+ *       201:
+ *         description: Tailor review submitted successfully
  */
 reviewsRoutes.get("/tailors/:tailorId/reviews", asyncHandler(reviewsController.getTailorReviews));
+reviewsRoutes.post(
+  "/tailors/:tailorId/reviews",
+  requireAuth,
+  validate(createReviewSchema),
+  asyncHandler(reviewsController.createTailorReview)
+);
 reviewsRoutes.get("/orders/:orderId/review", requireAuth, asyncHandler(reviewsController.getOrderReview));
 
 /**

@@ -9,6 +9,7 @@ import { env } from "./config/env.js";
 import { corsOptions } from "./config/cors.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import { apiRoutes } from "./routes/index.js";
+import { adminRoutes } from "./modules/admin/admin.routes.js";
 
 export const app = express();
 
@@ -217,6 +218,18 @@ app.get(
   ],
   authController.googleCallback
 );
+
+// Bridge frontend admin path mismatches transparently (/api/admin -> /api/v1/admin, /api/v1/api/admin -> /api/v1/admin, /admin -> /api/v1/admin)
+app.use((req, _res, next) => {
+  if (req.url.startsWith("/api/v1/api/admin")) {
+    req.url = req.url.replace(/^\/api\/v1\/api\/admin/, "/api/v1/admin");
+  } else if (req.url.startsWith("/api/admin")) {
+    req.url = req.url.replace(/^\/api\/admin/, "/api/v1/admin");
+  } else if (req.url.startsWith("/admin/") || req.url === "/admin") {
+    req.url = req.url.replace(/^\/admin/, "/api/v1/admin");
+  }
+  next();
+});
 
 // API Routes with Rate Limiting and Dynamic Freshness Headers
 app.use("/api/v1", (_req, res, next) => {

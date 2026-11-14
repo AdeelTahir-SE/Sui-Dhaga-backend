@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware.js";
+import { validate } from "../../middlewares/validation.middleware.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as notificationsController from "./notifications.controller.js";
+import { registerPushTokenSchema, createNotificationSchema } from "./notifications.validator.js";
 
 export const notificationsRoutes = Router();
 
@@ -16,8 +18,30 @@ export const notificationsRoutes = Router();
  *     responses:
  *       200:
  *         description: Notifications retrieved successfully
+ *   post:
+ *     summary: Create a notification alert
+ *     tags: [Notifications]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [title, message]
+ *             properties:
+ *               userId: { type: string }
+ *               title: { type: string }
+ *               message: { type: string }
+ *               type: { type: string, default: "system" }
+ *               data: { type: object }
+ *     responses:
+ *       201:
+ *         description: Notification created successfully
  */
 notificationsRoutes.get("/notifications", requireAuth, asyncHandler(notificationsController.getNotifications));
+notificationsRoutes.post("/notifications", requireAuth, validate(createNotificationSchema), asyncHandler(notificationsController.createNotification));
 
 /**
  * @openapi
@@ -45,7 +69,7 @@ notificationsRoutes.get("/notifications/unread-count", requireAuth, asyncHandler
  *       200:
  *         description: Push token registered successfully
  */
-notificationsRoutes.post("/notifications/push-token", requireAuth, asyncHandler(notificationsController.registerPushToken));
+notificationsRoutes.post("/notifications/push-token", requireAuth, validate(registerPushTokenSchema), asyncHandler(notificationsController.registerPushToken));
 
 /**
  * @openapi

@@ -125,6 +125,83 @@ export const reviewsService = {
     return resultReview;
   },
 
+  async createTailorReview(
+    tailorId: string,
+    userId: string | undefined,
+    _userRole: string | undefined,
+    data: Record<string, unknown>
+  ) {
+    if (!userId) throw new AppError("Authentication required", 401);
+    const client = getDbClient();
+    const mapped = toSnakeCase(data);
+
+    let resolvedTailorId = tailorId;
+    const { data: tailorRec } = await client
+      .from("tailors")
+      .select("id, user_id")
+      .or(`id.eq.${tailorId},user_id.eq.${tailorId}`)
+      .maybeSingle();
+
+    if (tailorRec?.id) {
+      resolvedTailorId = tailorRec.id;
+    }
+
+    const rating = Number(mapped.rating);
+    if (!rating || rating < 1 || rating > 5) {
+      throw new AppError("Rating must be between 1 and 5", 400);
+    }
+
+    const { data: existingList } = await client
+      .from("reviews")
+      .select("id, order_id")
+      .eq("tailor_id", resolvedTailorId)
+      .eq("customer_id", userId);
+
+    const existing = (existingList || []).find((r: any) => !r.order_id);
+
+    let resultReview;
+    if (existing?.id) {
+      const { data: updated, error: updateError } = await client
+        .from("reviews")
+        .update({
+          rating,
+          comment: mapped.comment || null,
+          images: Array.isArray(mapped.images) ? mapped.images : [],
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existing.id)
+        .select(REVIEW_SELECT_BASE)
+        .single();
+      if (updateError) throw new AppError(updateError.message, 400);
+      resultReview = updated;
+    } else {
+      const { data: created, error } = await client
+        .from("reviews")
+        .insert({
+          tailor_id: resolvedTailorId,
+          customer_id: userId,
+          rating,
+          comment: mapped.comment || null,
+          images: Array.isArray(mapped.images) ? mapped.images : [],
+        })
+        .select(REVIEW_SELECT_BASE)
+        .single();
+      if (error) throw new AppError(error.message, 400);
+      resultReview = created;
+    }
+
+    const { data: allReviews } = await client.from("reviews").select("rating").eq("tailor_id", resolvedTailorId);
+    if (allReviews && allReviews.length > 0) {
+      const totalRating = allReviews.reduce((acc, curr) => acc + Number(curr.rating), 0);
+      const avgRating = Number((totalRating / allReviews.length).toFixed(2));
+      await client.from("tailors").update({ rating: avgRating, review_count: allReviews.length }).eq("id", resolvedTailorId);
+    }
+
+    cacheService.del(`tailor:${resolvedTailorId}`);
+    cacheService.delByPattern("tailors:*");
+    return resultReview;
+  },
+
   async replyToReview(
     reviewId: string,
     userId: string | undefined,

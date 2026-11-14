@@ -60,7 +60,13 @@ export const tailorsRoutes = Router();
  *         description: Tailor profile created successfully
  */
 tailorsRoutes.get("/tailors", asyncHandler(tailorsController.getTailors));
-tailorsRoutes.post("/tailors", requireAuth, requireRole("tailor", "admin"), validate(createTailorSchema), asyncHandler(tailorsController.createTailor));
+tailorsRoutes.post(
+  "/tailors",
+  requireAuth,
+  requireRole("customer", "tailor", "admin"),
+  validate(createTailorSchema),
+  asyncHandler(tailorsController.createTailor)
+);
 
 /**
  * @swagger
@@ -135,6 +141,18 @@ tailorsRoutes.get("/tailors/map", asyncHandler(tailorsController.getTailorsMap))
  *     responses:
  *       200:
  *         description: Tailor profile updated
+ *   delete:
+ *     summary: Delete tailor profile
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Tailor profile deleted successfully
  */
 /**
  * @swagger
@@ -268,6 +286,58 @@ tailorsRoutes.put("/tailors/payouts/settings", requireAuth, requireRole("tailor"
 tailorsRoutes.patch("/tailors/payouts/settings", requireAuth, requireRole("tailor", "admin"), validate(payoutSettingsSchema), asyncHandler(tailorsController.upsertPayoutSettings));
 tailorsRoutes.get("/tailors/:tailorId", asyncHandler(tailorsController.getTailorById));
 tailorsRoutes.patch("/tailors/:tailorId", requireAuth, requireRole("tailor", "admin"), validate(updateTailorSchema), asyncHandler(tailorsController.updateTailor));
+tailorsRoutes.delete("/tailors/:tailorId", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.deleteTailor));
+
+/**
+ * @openapi
+ * /tailors/{tailorId}/verify-request:
+ *   post:
+ *     summary: Request tailor verification with documents
+ *     tags: [Tailors]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: tailorId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Verification requested successfully
+ */
+tailorsRoutes.post("/tailors/:tailorId/verify-request", requireAuth, requireRole("tailor", "admin"), asyncHandler(tailorsController.requestVerification));
+
+/**
+ * @openapi
+ * /tailors/compare:
+ *   get:
+ *     summary: Compare tailors side by side by IDs
+ *     tags: [Tailors]
+ *     parameters:
+ *       - in: query
+ *         name: ids
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Tailors compared successfully
+ *   post:
+ *     summary: Compare tailors side by side by IDs
+ *     tags: [Tailors]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               tailorIds:
+ *                 type: array
+ *                 items: { type: string }
+ *     responses:
+ *       200:
+ *         description: Tailors compared successfully
+ */
+tailorsRoutes.get("/tailors/compare", asyncHandler(tailorsController.compareTailors));
+tailorsRoutes.post("/tailors/compare", asyncHandler(tailorsController.compareTailors));
 
 /**
  * @swagger

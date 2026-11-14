@@ -424,9 +424,36 @@ export const usersService = {
 
   async deleteMyProfile(userId: string, _userRole?: string) {
     const client = getDbClient();
+
+    // 1. Invalidate caches
+    cacheService.del(`user:${userId}`);
+    cacheService.delByPattern(`*${userId}*`);
+    try {
+      const { data: tailor } = await client
+        .from("tailors")
+        .select("id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (tailor?.id) {
+        cacheService.del(`tailor:${tailor.id}`);
+        cacheService.delByPattern("tailors:*");
+      }
+    } catch {}
+
+    // 2. Delete user profile
     const { error } = await client.from("profiles").delete().eq("id", userId);
     if (error) throw new AppError(error.message, 400);
-    return true;
+
+    // 3. Delete from Supabase Auth admin if available
+    try {
+      if (typeof client?.auth?.admin?.deleteUser === "function") {
+        await client.auth.admin.deleteUser(userId);
+      }
+    } catch (authErr: any) {
+      console.warn("Could not delete Supabase auth user:", authErr?.message || authErr);
+    }
+
+    return { deleted: true, userId };
   },
 
   async getUserById(userId: string, _currentUserId?: string, _userRole?: string) {

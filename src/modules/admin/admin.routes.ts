@@ -193,7 +193,7 @@ adminRoutes.patch("/admin/users/:userId/unblock", ...adminAuth, asyncHandler(adm
  *       200:
  *         description: Tailor updated
  */
-adminRoutes.get("/admin/tailors", ...adminAuth, asyncHandler(adminController.getTailors));
+adminRoutes.get("/admin/tailors", requireAuth, requireRole("admin", "tailor"), asyncHandler(adminController.getTailors));
 adminRoutes.get("/admin/tailors/:tailorId", ...adminAuth, asyncHandler(adminController.getTailorById));
 adminRoutes.patch(
   "/admin/tailors/:tailorId",
@@ -289,6 +289,14 @@ adminRoutes.patch(
  *     responses:
  *       200:
  *         description: Platform payments retrieved successfully
+ * /admin/payments/transactions:
+ *   get:
+ *     summary: List all platform payment transactions (admin only)
+ *     tags: [Admin]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Platform transactions retrieved successfully
  * /admin/payments/payouts:
  *   get:
  *     summary: List tailor payout requests (admin only)
@@ -332,6 +340,7 @@ adminRoutes.patch(
  *         description: Refund processed
  */
 adminRoutes.get("/admin/payments", ...adminAuth, asyncHandler(adminController.getPayments));
+adminRoutes.get("/admin/payments/transactions", ...adminAuth, asyncHandler(adminController.getPayments));
 adminRoutes.get("/admin/payments/payouts", ...adminAuth, asyncHandler(adminController.getPayouts));
 adminRoutes.post(
   "/admin/payments/payouts/:id",

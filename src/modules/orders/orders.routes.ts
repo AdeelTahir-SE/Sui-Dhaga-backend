@@ -7,6 +7,8 @@ import * as ordersController from "./orders.controller.js";
 import {
   createOrderSchema,
   updateOrderStatusSchema,
+  addOrderTrackingSchema,
+  updateOrderTrackingSchema,
 } from "./orders.validator.js";
 
 export const ordersRoutes = Router();
@@ -135,6 +137,137 @@ ordersRoutes.get("/orders/:orderId/parties", ...orderAuth, asyncHandler(ordersCo
  *         description: Order status updated
  */
 ordersRoutes.patch("/orders/:orderId/status", requireAuth, requireRole("tailor", "admin"), validate(updateOrderStatusSchema), asyncHandler(ordersController.updateOrderStatus));
+
+/**
+ * @openapi
+ * /orders/{orderId}/cancel:
+ *   post:
+ *     summary: Cancel an order
+ *     tags: [Orders]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Order cancelled successfully
+ *   patch:
+ *     summary: Cancel an order
+ *     tags: [Orders]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Order cancelled successfully
+ */
+ordersRoutes.post("/orders/:orderId/cancel", ...orderAuth, asyncHandler(ordersController.cancelOrder));
+ordersRoutes.patch("/orders/:orderId/cancel", ...orderAuth, asyncHandler(ordersController.cancelOrder));
+
+/**
+ * @openapi
+ * /orders/{orderId}/invoice:
+ *   get:
+ *     summary: Generate and fetch order invoice
+ *     tags: [Orders]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Invoice generated successfully
+ */
+ordersRoutes.get("/orders/:orderId/invoice", ...orderAuth, asyncHandler(ordersController.getOrderInvoice));
+
+/**
+ * @openapi
+ * /orders/{orderId}/tracking:
+ *   get:
+ *     summary: Get tracking timeline events for an order
+ *     tags: [Orders]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Order tracking events retrieved
+ *   post:
+ *     summary: Add a tracking timeline update to an order
+ *     tags: [Orders]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [status]
+ *             properties:
+ *               status: { type: string, example: "cutting" }
+ *               description: { type: string, example: "Fabric cutting initiated according to measurements" }
+ *               location: { type: string, example: "Lahore Atelier" }
+ *     responses:
+ *       201:
+ *         description: Tracking update added successfully
+ */
+ordersRoutes.get("/orders/:orderId/tracking", ...orderAuth, asyncHandler(ordersController.getOrderTracking));
+ordersRoutes.post(
+  "/orders/:orderId/tracking",
+  requireAuth,
+  requireRole("tailor", "admin"),
+  validate(addOrderTrackingSchema),
+  asyncHandler(ordersController.addOrderTracking)
+);
+
+/**
+ * @openapi
+ * /orders/tracking/{trackingId}:
+ *   patch:
+ *     summary: Update an existing order tracking event
+ *     tags: [Orders]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: trackingId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status: { type: string }
+ *               description: { type: string }
+ *               location: { type: string }
+ *     responses:
+ *       200:
+ *         description: Tracking entry updated successfully
+ */
+ordersRoutes.patch(
+  "/orders/tracking/:trackingId",
+  requireAuth,
+  requireRole("tailor", "admin"),
+  validate(updateOrderTrackingSchema),
+  asyncHandler(ordersController.updateOrderTracking)
+);
 
 
 

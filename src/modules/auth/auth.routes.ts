@@ -111,6 +111,31 @@ authRoutes.post("/login", authLimiter, validate(loginSchema), asyncHandler(authC
  */
 authRoutes.post("/logout", requireAuth, asyncHandler(authController.logout));
 
+/**
+ * @openapi
+ * /auth/me:
+ *   get:
+ *     summary: Retrieve authenticated user identity and role
+ *     tags: [Auth]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: User identity retrieved successfully
+ */
+authRoutes.get("/me", requireAuth, asyncHandler(authController.getMe));
+
+/**
+ * @openapi
+ * /auth/verify-email:
+ *   get:
+ *     summary: Check email verification status
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Verification status retrieved
+ */
+authRoutes.get("/verify-email", asyncHandler(authController.verifyEmail));
+
 
 
 /**

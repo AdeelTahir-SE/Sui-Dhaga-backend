@@ -201,6 +201,10 @@ function createQueryBuilder(handler) {
       state.filters.push(["contains", col, val]);
       return builder;
     },
+    is(col, val) {
+      state.filters.push(["is", col, val]);
+      return builder;
+    },
     order() {
       return builder;
     },
@@ -1617,6 +1621,194 @@ describe("Sui-Dhaga Backend Gaps Fulfillment Suite", () => {
         { authorization: "Bearer test-token" }
       );
       assert.equal(emptyAvatarRes.status, 400);
+    });
+  });
+
+  describe("Newly Implemented Endpoints & Frontend Compatibility Suite", () => {
+    it("deletes user account and profile on DELETE /api/v1/users/me", async () => {
+      const unauth = await invokeApp("DELETE", "/api/v1/users/me");
+      assert.equal(unauth.status, 401);
+
+      mockUserAuth({ id: "user-del-1", email: "del@example.com", role: "customer" });
+      let deletedProfileId = null;
+      mockDb({
+        profiles: (state) => {
+          if (state.op === "delete") {
+            deletedProfileId = "user-del-1";
+            return { data: { id: "user-del-1" }, error: null };
+          }
+          return { data: null, error: null };
+        },
+        tailors: () => ({ data: null, error: null }),
+      });
+
+      const res = await invokeApp("DELETE", "/api/v1/users/me", undefined, {
+        authorization: "Bearer test-token",
+      });
+      assert.equal(res.status, 200);
+      assert.equal(res.body.success, true);
+      assert.equal(deletedProfileId, "user-del-1");
+    });
+
+    it("submits direct tailor review on POST /api/v1/tailors/:tailorId/reviews and updates tailor score", async () => {
+      const unauth = await invokeApp("POST", "/api/v1/tailors/tailor-rev-1/reviews", { rating: 5 });
+      assert.equal(unauth.status, 401);
+
+      mockUserAuth({ id: "cust-rev-1", email: "cust-rev@example.com", role: "customer" });
+      let insertedReview = null;
+      let updatedTailorRating = null;
+
+      mockDb({
+        tailors: (state) => {
+          if (state.op === "update") {
+            updatedTailorRating = state.payload;
+            return { data: { id: "tailor-rev-1", ...state.payload }, error: null };
+          }
+          return {
+            data: { id: "tailor-rev-1", user_id: "tailor-rev-user", rating: 4.0, review_count: 1 },
+            error: null,
+          };
+        },
+        reviews: (state) => {
+          if (state.op === "insert") {
+            insertedReview = state.payload;
+            return {
+              data: {
+                id: "rev-new-1",
+                ...state.payload,
+                created_at: new Date().toISOString(),
+                customer: { id: "cust-rev-1", full_name: "Happy Client", avatar_url: null },
+              },
+              error: null,
+            };
+          }
+          if (state.op === "select" && state.filters.some((f) => f[1] === "tailor_id")) {
+            return { data: [{ rating: 4 }, { rating: 5 }], error: null };
+          }
+          return { data: null, error: null };
+        },
+      });
+
+      const invalidRating = await invokeApp(
+        "POST",
+        "/api/v1/tailors/tailor-rev-1/reviews",
+        { rating: 6, comment: "Too high" },
+        { authorization: "Bearer test-token" }
+      );
+      assert.equal(invalidRating.status, 422);
+
+      const res = await invokeApp(
+        "POST",
+        "/api/v1/tailors/tailor-rev-1/reviews",
+        { rating: 5, comment: "Master stitching on bridal sherwani" },
+        { authorization: "Bearer test-token" }
+      );
+      assert.equal(res.status, 201);
+      assert.equal(res.body.success, true);
+      assert.equal(insertedReview.rating, 5);
+      assert.equal(insertedReview.tailor_id, "tailor-rev-1");
+      assert.equal(updatedTailorRating.rating, 4.5);
+    });
+
+    it("allows customer to onboard as tailor on POST /api/v1/tailors and promotes profile role", async () => {
+      mockUserAuth({ id: "user-new-tailor", email: "newtailor@example.com", role: "customer" });
+      let promotedRole = null;
+      let createdTailor = null;
+
+      mockDb({
+        profiles: (state) => {
+          if (state.op === "update") {
+            promotedRole = state.payload?.role;
+            return { data: { id: "user-new-tailor", role: "tailor" }, error: null };
+          }
+          return { data: { id: "user-new-tailor", role: "customer" }, error: null };
+        },
+        tailors: (state) => {
+          if (state.op === "insert") {
+            createdTailor = state.payload;
+            return {
+              data: {
+                id: "tailor-created-1",
+                user_id: "user-new-tailor",
+                shop_name: "Royal Stitching",
+                city: "Lahore",
+                address: "Anarkali",
+                specialties: ["Bridal", "Sherwani"],
+                latitude: null,
+                longitude: null,
+              },
+              error: null,
+            };
+          }
+          return { data: null, error: null };
+        },
+        tailor_services: () => ({ data: [], error: null }),
+      });
+
+      const res = await invokeApp(
+        "POST",
+        "/api/v1/tailors",
+        {
+          shopName: "Royal Stitching",
+          city: "Lahore",
+          address: "Shop 12, Anarkali",
+          specialties: ["Bridal", "Sherwani"],
+          experienceYears: 8,
+          startingPrice: 3500,
+        },
+        { authorization: "Bearer test-token" }
+      );
+
+      assert.equal(res.status, 201);
+      assert.equal(res.body.success, true);
+      assert.equal(promotedRole, "tailor");
+    });
+
+    it("bridges admin route path variations and serves transactions on GET /admin/payments/transactions", async () => {
+      mockUserAuth({ id: "admin-1", email: "admin@example.com", role: "admin" });
+      mockDb({
+        profiles: () => ({ count: 10, data: [], error: null }),
+        tailors: () => ({ count: 5, data: [{ id: "t-1", shop_name: "Tailor Shop" }], error: null }),
+        orders: () => ({ count: 12, data: [], error: null }),
+        payments: () => ({
+          count: 2,
+          data: [
+            { id: "pay-1", amount: 5000, status: "completed" },
+            { id: "pay-2", amount: 3500, status: "completed" },
+          ],
+          error: null,
+        }),
+      });
+
+      // 1. Direct standard endpoint
+      const stdRes = await invokeApp("GET", "/api/v1/admin/payments/transactions", undefined, {
+        authorization: "Bearer test-token",
+      });
+      assert.equal(stdRes.status, 200);
+      assert.equal(stdRes.body.success, true);
+      assert.equal(stdRes.body.data.length, 2);
+
+      // 2. Frontend /api/admin/... URL variation bridged seamlessly
+      const apiAdminRes = await invokeApp("GET", "/api/admin/dashboard/stats", undefined, {
+        authorization: "Bearer test-token",
+      });
+      assert.equal(apiAdminRes.status, 200);
+      assert.equal(apiAdminRes.body.data.totalTailors, 5);
+
+      // 3. Frontend /api/v1/api/admin/... URL variation bridged seamlessly
+      const apiV1ApiRes = await invokeApp("GET", "/api/v1/api/admin/dashboard/stats", undefined, {
+        authorization: "Bearer test-token",
+      });
+      assert.equal(apiV1ApiRes.status, 200);
+      assert.equal(apiV1ApiRes.body.data.totalTailors, 5);
+
+      // 4. Tailor role permitted to list tailors during onboarding
+      mockUserAuth({ id: "tailor-user-1", email: "tailor@example.com", role: "tailor" });
+      const tailorListRes = await invokeApp("GET", "/api/v1/admin/tailors", undefined, {
+        authorization: "Bearer test-token",
+      });
+      assert.equal(tailorListRes.status, 200);
+      assert.equal(tailorListRes.body.success, true);
     });
   });
 });

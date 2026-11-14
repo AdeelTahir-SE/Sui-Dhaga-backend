@@ -83,6 +83,13 @@ export const usersRoutes = Router();
  *     responses:
  *       200:
  *         description: Profile successfully updated
+ *   delete:
+ *     summary: Delete currently authenticated user account and profile
+ *     tags: [Users]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
  */
 usersRoutes.get("/users/me", requireAuth, asyncHandler(usersController.getMyProfile));
 usersRoutes.patch(
@@ -98,6 +105,11 @@ usersRoutes.put(
   uploadAvatarFlexible,
   validate(updateProfileSchema),
   asyncHandler(usersController.updateMyProfile)
+);
+usersRoutes.delete(
+  "/users/me",
+  requireAuth,
+  asyncHandler(usersController.deleteMyProfile)
 );
 
 /**
